@@ -1,0 +1,92 @@
+{% extends "admin/base.html" %}
+{% from 'macros.html' import help_offcanvas %}
+
+{% block title %}Centro Aiuto - AGATA v{{ app_version }}{% endblock %}
+{% block page_title %}<i class="bi bi-question-circle text-primary me-2"></i>Centro Aiuto{% endblock %}
+
+{% block extra_css %}
+<style>
+  .module-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    font-weight: 700;
+    color: #6c757d;
+    border-bottom: 2px solid #dee2e6;
+    padding-bottom: 0.4rem;
+    margin-bottom: 0.75rem;
+    margin-top: 1.5rem;
+  }
+  .module-label:first-of-type { margin-top: 0; }
+  .help-card { transition: box-shadow 0.15s, transform 0.15s; border: 1px solid #e9ecef; }
+  .help-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); transform: translateY(-1px); }
+  .help-tag { font-size: 0.72rem; padding: 0.2em 0.55em; }
+  .module-icon { font-size: 1.1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+{{ help_offcanvas(can_edit=(current_user.is_authenticated and current_user.role == 'superuser')) }}
+
+{% set module_names = {
+  'variable_stars': 'Editor Stelle Variabili',
+  'admin': 'Amministrazione',
+  'exoplanets': 'Esopianeti',
+  'kb': 'Knowledge Base'
+} %}
+{% set module_icons = {
+  'variable_stars': 'bi-graph-up',
+  'admin': 'bi-gear',
+  'exoplanets': 'bi-globe',
+  'kb': 'bi-database'
+} %}
+
+{% if articles %}
+  {% set current_module = namespace(value='') %}
+  {% for article in articles %}
+    {% if article.module != current_module.value %}
+      {% set current_module.value = article.module %}
+      {% if not loop.first %}</div>{% endif %}
+      <div class="module-label mt-{% if loop.first %}0{% else %}4{% endif %}">
+        <i class="bi {{ module_icons.get(article.module, 'bi-folder') }} me-1 module-icon"></i>
+        {{ module_names.get(article.module, article.module | replace('_', ' ') | title) }}
+      </div>
+      <div class="row g-3">
+    {% endif %}
+
+    <div class="col-md-4 col-sm-6">
+      <div class="card help-card h-100">
+        <div class="card-body d-flex flex-column">
+          <h6 class="card-title mb-2" style="font-size: 0.95rem;">{{ article.title }}</h6>
+          {% if article.tags %}
+          <div class="mb-2">
+            {% for tag in article.tags %}
+            <span class="badge bg-light text-secondary border help-tag">{{ tag }}</span>
+            {% endfor %}
+          </div>
+          {% endif %}
+          <div class="mt-auto d-flex gap-2">
+            <button class="btn btn-sm btn-primary"
+                    onclick="openHelpPanel('{{ article.help_id }}')">
+              <i class="bi bi-layout-sidebar-reverse me-1"></i>Pannello
+            </button>
+            <a href="{{ url_for('help.article_page', help_id=article.help_id) }}"
+               class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-book me-1"></i>Pagina intera
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% if loop.last %}</div>{% endif %}
+  {% endfor %}
+{% else %}
+  <div class="alert alert-info">
+    <i class="bi bi-info-circle me-2"></i>
+    Nessun articolo disponibile. Controlla la configurazione in
+    <code>agata/help/content/_config.yml</code>.
+  </div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,2280 @@
+{% extends "admin/base.html" %}
+{% from 'macros.html' import help_button %}
+
+{% block title %}Catalogo Stelle - AGATA Admin{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-1">Catalogo Stelle Locali {{ help_button('admin.stars_catalog') }}</h1>
+            <p class="text-muted mb-0">
+                {% if is_superuser %}
+                Bacino centrale stelle - assegna a associazioni
+                {% elif is_admin %}
+                Stelle assegnate alla tua associazione
+                {% else %}
+                Stelle con progetti disponibili
+                {% endif %}
+            </p>
+        </div>
+        <div class="d-flex gap-3 align-items-center">
+            <!-- Conteggio stelle (solo se caricate) -->
+            {% if should_load_stars %}
+            <div class="text-end">
+                <small class="text-muted d-block">Stelle filtrate</small>
+                <strong class="fs-5">{{ stars_in_page }} / {{ total_stars }}</strong>
+            </div>
+            {% endif %}
+
+            <!-- Toolbar Toggle Preview Grafici -->
+            <div class="d-flex align-items-center gap-2">
+                <button id="toggleChartsBtn" class="btn btn-sm btn-outline-primary" onclick="toggleCharts()">
+                    <i class="bi bi-graph-up me-1"></i>Grafici
+                </button>
+                <div id="chartsToolbar" class="d-none" style="display: flex !important; gap: 0.5rem; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 0.25rem;">
+                        <label class="form-label mb-0" style="font-size: 0.8rem;">Max:</label>
+                        <select id="previewMaxPoints" class="form-select form-select-sm" style="width: auto;">
+                            <option value="300" selected>300</option>
+                            <option value="500">500</option>
+                            <option value="1000">1000</option>
+                            <option value="2000">2000</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.25rem;">
+                        <label class="form-label mb-0" style="font-size: 0.8rem;">W:</label>
+                        <select id="chartWidth" class="form-select form-select-sm" style="width: auto;">
+                            <option value="300" selected>300px</option>
+                            <option value="400">400px</option>
+                            <option value="500">500px</option>
+                            <option value="600">600px</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            {% if is_superuser %}
+            <a href="{{ url_for('admin.external_catalogs_page') }}" class="btn btn-primary btn-sm">
+                <i class="bi bi-cloud-download me-1"></i>Importa
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Quick Filters & Recent Uploads (Combined Single Row) - Visible only for superuser -->
+    {% if is_superuser %}
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row g-3 align-items-center">
+                <!-- Filtri Rapidi (solo Superuser) -->
+                <div class="col-auto">
+                    <h6 class="mb-2 mb-md-0"><i class="bi bi-filter-circle me-2"></i>Filtri</h6>
+                </div>
+                <div class="col-auto">
+                    <button type="button" id="qb-all" class="btn btn-sm btn-outline-primary"
+                            onclick="fbClearAll()">
+                        <i class="bi bi-star me-1"></i>Tutte
+                    </button>
+                </div>
+                <div class="col-auto">
+                    <button type="button" id="qb-unassigned" class="btn btn-sm btn-outline-warning"
+                            onclick="fbSetFilter('is_assigned','is_false','')">
+                        <i class="bi bi-question-circle me-1"></i>Senza assegnazioni
+                    </button>
+                </div>
+                <div class="col-auto">
+                    <button type="button" id="qb-assigned" class="btn btn-sm btn-outline-info"
+                            onclick="fbSetFilter('is_assigned','is_true','')">
+                        <i class="bi bi-pin me-1"></i>Assegnate
+                    </button>
+                </div>
+                <div class="col-auto">
+                    <button type="button" id="qb-with_project" class="btn btn-sm btn-outline-success"
+                            onclick="fbSetFilter('has_active_project','is_true','')">
+                        <i class="bi bi-check-circle me-1"></i>Con progetto
+                    </button>
+                </div>
+
+                <!-- Separator -->
+                <div class="col-auto" style="border-left: 1px solid #dee2e6; height: 32px;"></div>
+
+                <!-- Caricamenti Recenti -->
+                <div class="col-auto">
+                    <h6 class="mb-2 mb-md-0"><i class="bi bi-calendar-event me-2"></i>Caricamenti</h6>
+                </div>
+                <div class="col-auto">
+                    <button type="button" id="qb-date-all" class="btn btn-sm btn-outline-primary"
+                            onclick="fbRemoveCol('last_imported_at')">
+                        <i class="bi bi-hourglass-split me-1"></i>Tutti
+                    </button>
+                </div>
+                <div class="col-auto">
+                    <button type="button" id="qb-date-24h" class="btn btn-sm btn-outline-primary"
+                            onclick="fbSetFilter('last_imported_at','gte',fbDateOffset(1))">
+                        <i class="bi bi-clock me-1"></i>24h
+                    </button>
+                </div>
+                <div class="col-auto">
+                    <button type="button" id="qb-date-7d" class="btn btn-sm btn-outline-primary"
+                            onclick="fbSetFilter('last_imported_at','gte',fbDateOffset(7))">
+                        <i class="bi bi-calendar me-1"></i>7gg
+                    </button>
+                </div>
+
+                <!-- Separator -->
+                <div class="col-auto" style="border-left: 1px solid #dee2e6; height: 32px;"></div>
+
+                <!-- Legend/Info -->
+                <div class="col-auto">
+                    <small class="text-muted" style="display: block; font-size: 0.8rem; line-height: 1.3;">
+                        <i class="bi bi-info-circle me-1"></i>
+                        <strong>Bacino centrale</strong> di stelle. Assegna alle associazioni con i filtri.
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Quick Filter Buttons per ADMIN (Stato stelle senza progetti) -->
+    {% if is_admin %}
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row g-3 align-items-center">
+                <div class="col-auto">
+                    <h6 class="mb-2 mb-md-0"><i class="bi bi-diagram-3 me-2"></i>Filtri</h6>
+                </div>
+                <div class="col-auto">
+                    <button type="button" id="qb-assigned" class="btn btn-sm btn-outline-primary"
+                            onclick="fbSetFilter('is_assigned','is_true','')">
+                        <i class="bi bi-pin me-1"></i>Senza progetto
+                    </button>
+                </div>
+                <div class="col-auto">
+                    <button type="button" id="qb-all" class="btn btn-sm btn-outline-primary"
+                            onclick="fbClearAll()">
+                        <i class="bi bi-star me-1"></i>Tutte
+                    </button>
+                </div>
+                <div class="col-auto">
+                    <button type="button" id="qb-with_project" class="btn btn-sm btn-outline-success"
+                            onclick="fbSetFilter('has_active_project','is_true','')">
+                        <i class="bi bi-check-circle me-1"></i>Con progetto
+                    </button>
+                </div>
+
+                <!-- Separator -->
+                <div class="col-auto" style="border-left: 1px solid #dee2e6; height: 32px;"></div>
+
+                <!-- Caricamenti Recenti -->
+                <div class="col-auto">
+                    <h6 class="mb-2 mb-md-0"><i class="bi bi-calendar-event me-2"></i>Caricamenti</h6>
+                </div>
+                <div class="col-auto">
+                    <button type="button" id="qb-date-all" class="btn btn-sm btn-outline-primary"
+                            onclick="fbRemoveCol('last_imported_at')">
+                        <i class="bi bi-hourglass-split me-1"></i>Tutti
+                    </button>
+                </div>
+                <div class="col-auto">
+                    <button type="button" id="qb-date-24h" class="btn btn-sm btn-outline-primary"
+                            onclick="fbSetFilter('last_imported_at','gte',fbDateOffset(1))">
+                        <i class="bi bi-clock me-1"></i>24h
+                    </button>
+                </div>
+                <div class="col-auto">
+                    <button type="button" id="qb-date-7d" class="btn btn-sm btn-outline-primary"
+                            onclick="fbSetFilter('last_imported_at','gte',fbDateOffset(7))">
+                        <i class="bi bi-calendar me-1"></i>7gg
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Quick Filter Buttons per ANALYST -->
+    {% if is_analyst %}
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row g-3 align-items-center">
+                <div class="col-auto">
+                    <h6 class="mb-2 mb-md-0"><i class="bi bi-diagram-3 me-2"></i>Filtri</h6>
+                </div>
+                <div class="col-auto">
+                    <a href="?project_filter=all&state={{ state_filter }}&date_filter={{ date_filter }}" class="btn btn-sm {% if project_filter == 'all' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                        <i class="bi bi-person-check me-1"></i>Miei progetti
+                    </a>
+                </div>
+                <div class="col-auto">
+                    <a href="?project_filter=assigned_to_others&state={{ state_filter }}&date_filter={{ date_filter }}" class="btn btn-sm {% if project_filter == 'assigned_to_others' %}btn-info{% else %}btn-outline-info{% endif %}">
+                        <i class="bi bi-people me-1"></i>Di altri
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ============================================================
+         COSTRUTTORE FILTRI (ServiceNow-style)
+         ============================================================ -->
+    <div class="card mb-4" id="filterBuilderCard">
+        <div class="card-header bg-white">
+            <h6 class="mb-0">
+                <i class="bi bi-sliders me-2"></i>Filtri
+                <span id="activePillsCount" class="badge bg-primary ms-2 d-none">0</span>
+            </h6>
+        </div>
+        <div class="card-body pb-2" id="filterBuilderPanel">
+            <!-- Pills filtri attivi -->
+            <div id="activePillsRow" class="d-flex flex-wrap gap-2 mb-3" style="display:none!important"></div>
+
+            <!-- Riga aggiunta filtro -->
+            <div class="row g-2 align-items-center flex-wrap">
+                <div class="col-auto">
+                    <select id="fbColPicker" class="form-select form-select-sm" style="min-width:170px"
+                            onchange="fbOnColumnChange()">
+                        <option value="">-- Colonna --</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <select id="fbOpPicker" class="form-select form-select-sm" style="min-width:150px"
+                            onchange="fbOnOperatorChange()" disabled>
+                        <option value="">-- Operatore --</option>
+                    </select>
+                </div>
+                <div class="col-auto" id="fbValueContainer">
+                    <input type="text" id="fbValueInput" class="form-control form-control-sm"
+                           style="min-width:200px" placeholder="Valore..." disabled>
+                </div>
+                <div class="col-auto" id="fbLoadingSpinner" style="display:none">
+                    <div class="spinner-border spinner-border-sm text-secondary"></div>
+                </div>
+                <div class="col-auto">
+                    <button type="button" class="btn btn-sm btn-outline-primary"
+                            id="fbAddBtn" onclick="fbAddFilter()" disabled>
+                        <i class="bi bi-plus-circle me-1" id="fbAddBtnIcon"></i><span id="fbAddBtnLabel">Aggiungi</span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary ms-1 d-none"
+                            id="fbCancelEditBtn" onclick="fbCancelEdit()">
+                        <i class="bi bi-x me-1"></i>Annulla
+                    </button>
+                </div>
+                <div class="col-auto ms-auto d-flex gap-1 align-items-center">
+                    <button type="button" class="btn btn-sm btn-primary" id="fbApplyBtn" onclick="fbApply()">
+                        <i class="bi bi-search me-1"></i>Applica
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="fbClearAll()">
+                        <i class="bi bi-x-circle me-1"></i>Cancella tutti
+                    </button>
+
+                    <!-- Dropdown query salvate personali -->
+                    <div class="dropdown" id="savedQueriesDropdownWrap">
+                        <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button"
+                                id="savedQueriesDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-bookmark me-1"></i>Salvate
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" id="savedQueriesMenu" style="min-width:260px">
+                            <li>
+                                <a class="dropdown-item" href="#" onclick="sqOpenSaveModal(); return false;">
+                                    <i class="bi bi-floppy me-2 text-primary"></i>Salva filtri correnti...
+                                </a>
+                            </li>
+                            <li><hr class="dropdown-divider" id="sqDivider" style="display:none"></li>
+                            <li id="sqEmptyMsg" class="dropdown-item text-muted small px-3 d-none">Nessuna query salvata</li>
+                            <li id="sqList"></li>
+                        </ul>
+                    </div>
+
+                    <!-- Dropdown preset superuser -->
+                    <div class="dropdown" id="presetsDropdownWrap">
+                        <button class="btn btn-sm btn-outline-warning dropdown-toggle" type="button"
+                                id="presetsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-star me-1"></i>Preset
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" id="presetsMenu" style="min-width:280px">
+                            <li id="presetsEmptyMsg" class="dropdown-item text-muted small px-3">Caricamento...</li>
+                            <li id="presetsList"></li>
+                            {% if is_superuser %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item" href="#" onclick="sqOpenPresetModal(); return false;">
+                                    <i class="bi bi-plus-circle me-2 text-warning"></i>Crea preset...
+                                </a>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Riga ordinamento + associazione -->
+            <div class="row g-2 align-items-center mt-2 pt-2 border-top">
+                <div class="col-auto">
+                    <span class="text-muted small">Ordina per</span>
+                </div>
+                <div class="col-auto">
+                    <select id="sortBySelect" class="form-select form-select-sm" style="min-width:130px">
+                        <option value="updated_at" {% if sort_by == 'updated_at' %}selected{% endif %}>Data import</option>
+                        <option value="gaia_id" {% if sort_by == 'gaia_id' %}selected{% endif %}>Gaia ID</option>
+                        <option value="points" {% if sort_by == 'points' %}selected{% endif %}>Punti</option>
+                        <option value="catalogs" {% if sort_by == 'catalogs' %}selected{% endif %}>N. Cataloghi</option>
+                        <option value="min_mag" {% if sort_by == 'min_mag' %}selected{% endif %}>Mag Min</option>
+                        <option value="max_mag" {% if sort_by == 'max_mag' %}selected{% endif %}>Mag Max</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <select id="sortOrderSelect" class="form-select form-select-sm">
+                        <option value="desc" {% if sort_order == 'desc' %}selected{% endif %}>↓ Decrescente</option>
+                        <option value="asc" {% if sort_order == 'asc' %}selected{% endif %}>↑ Crescente</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="applySortOrder()">
+                        <i class="bi bi-sort-down me-1"></i>Applica
+                    </button>
+                </div>
+                {% if is_superuser and associations %}
+                <div class="col-auto ms-3" style="border-left: 1px solid #dee2e6; padding-left: 1rem;">
+                    <span class="text-muted small me-1">Associazione</span>
+                    <select class="form-select form-select-sm d-inline-block" style="width:auto"
+                            onchange="if(this.value) fbSetFilter('association_id','contains',this.value); else fbRemoveCol('association_id')">
+                        <option value="">-- Tutte --</option>
+                        {% for assoc in associations %}
+                        <option value="{{ assoc.name }}">{{ assoc.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+                {% if current_page > 1 %}
+                <div class="col-auto ms-auto">
+                    <small class="text-muted">p.{{ current_page }}</small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <!-- END COSTRUTTORE FILTRI -->
+
+
+    <!-- Legenda stati - Per admin/analyst -->
+    {% if is_admin or is_analyst %}
+    <div class="alert alert-info mb-4">
+        <i class="bi bi-info-circle me-2"></i>
+        <strong>Catalogo Stelle:</strong>
+        {% if is_admin %}
+            Vedi le stelle assegnate alla tua associazione dal superuser.
+            Puoi creare un progetto per ogni stella per iniziare l'analisi.
+        {% elif is_analyst %}
+            Stelle disponibili per l'assegnazione. Assegnati i progetti con i quali vuoi lavorare.
+        {% endif %}
+    </div>
+    {% endif %}
+
+
+    <!-- Azioni Bulk (visibili solo per superuser con selezione) -->
+    {% if is_superuser and stars %}
+    <div class="card mb-4 d-none" id="bulkActionsPanel">
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col">
+                    <small class="text-muted">
+                        <span id="selectedCount">0</span> stelle selezionate
+                    </small>
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-sm btn-primary" onclick="openBulkAssignModal()">
+                        <i class="bi bi-link me-1"></i>Assegna a Associazione
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="openBulkDeleteModal()">
+                        <i class="bi bi-trash me-1"></i>Cancella dal Filtro
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="clearSelection()">
+                        <i class="bi bi-x me-1"></i>Deseleziona Tutto
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Lista Stelle -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover" id="starsTable">
+                    <thead>
+                        <tr>
+                            {% if is_superuser %}
+                            <th style="width: 30px">
+                                <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this)">
+                            </th>
+                            {% endif %}
+                            <th>
+                                <button type="button" class="btn btn-link p-0 text-dark text-decoration-none sortable-header"
+                                        onclick="fbApplySortHeader('gaia_id')">
+                                    Gaia DR3 ID {% if sort_by == 'gaia_id' %}<i class="bi bi-arrow-{% if sort_order == 'desc' %}down{% else %}up{% endif %}"></i>{% endif %}
+                                </button>
+                            </th>
+                            <th class="text-center">
+                                <button type="button" class="btn btn-link p-0 text-dark text-decoration-none sortable-header"
+                                        onclick="fbApplySortHeader('points')">
+                                    Punti {% if sort_by == 'points' %}<i class="bi bi-arrow-{% if sort_order == 'desc' %}down{% else %}up{% endif %}"></i>{% endif %}
+                                </button>
+                            </th>
+                            <th class="text-center">
+                                <button type="button" class="btn btn-link p-0 text-dark text-decoration-none sortable-header"
+                                        onclick="fbApplySortHeader('catalogs')">
+                                    Cataloghi {% if sort_by == 'catalogs' %}<i class="bi bi-arrow-{% if sort_order == 'desc' %}down{% else %}up{% endif %}"></i>{% endif %}
+                                </button>
+                            </th>
+                            <th>Range JD</th>
+                            <th>Range Mag</th>
+                            <th style="width: 320px" class="preview-column d-none">Anteprima</th>
+                            <th>Import</th>
+                            <th>Assegnazione</th>
+                            <!-- NUOVO: Colonna Variable Type -->
+                            <th style="width: 180px; min-width: 180px;">Tipo Variabile</th>
+                            <th></th>
+                        </tr>
+                        <!-- Riga filtri inline per colonna (ServiceNow-style) -->
+                        <tr id="inlineFiltersRow" class="table-light">
+                            {% if is_superuser %}<th></th>{% endif %}
+                            <th>
+                                <input type="text" id="icol_gaia_id" class="form-control form-control-sm inline-col-filter"
+                                       data-col="gaia_id" data-op="contains"
+                                       placeholder="Cerca ID..."
+                                       value="{{ adv_filters | selectattr('col','eq','gaia_id') | map(attribute='val') | first | default('') }}">
+                            </th>
+                            <th class="text-center">
+                                <input type="number" id="icol_total_points" class="form-control form-control-sm inline-col-filter"
+                                       data-col="total_points" data-op="gte"
+                                       placeholder="≥"
+                                       style="width:70px"
+                                       value="{{ adv_filters | selectattr('col','eq','total_points') | map(attribute='val') | first | default('') }}">
+                            </th>
+                            <th class="text-center" style="position:relative">
+                                <input type="text" id="icol_catalogs" class="form-control form-control-sm inline-col-filter"
+                                       data-col="catalogs" data-op="contains"
+                                       placeholder="Catalogo..."
+                                       autocomplete="off"
+                                       value="{{ adv_filters | selectattr('col','eq','catalogs') | map(attribute='val') | first | default('') }}">
+                                <ul id="icol_catalogs_ac" class="list-group shadow-sm position-absolute d-none"
+                                    style="z-index:1050;min-width:160px;max-height:200px;overflow-y:auto;top:100%;left:0"></ul>
+                            </th>
+                            <th><span class="text-muted small">—</span></th>
+                            <th>
+                                <div class="d-flex gap-1">
+                                    <input type="number" step="0.01" id="icol_min_mag" class="form-control form-control-sm inline-col-filter"
+                                           data-col="min_mag" data-op="gte"
+                                           placeholder="≥"
+                                           style="width:65px"
+                                           value="{{ adv_filters | selectattr('col','eq','min_mag') | map(attribute='val') | first | default('') }}">
+                                    <input type="number" step="0.01" id="icol_max_mag" class="form-control form-control-sm inline-col-filter"
+                                           data-col="max_mag" data-op="lte"
+                                           placeholder="≤"
+                                           style="width:65px"
+                                           value="{{ adv_filters | selectattr('col','eq','max_mag') | map(attribute='val') | first | default('') }}">
+                                </div>
+                            </th>
+                            <th class="preview-column d-none"></th>
+                            <th>
+                                <input type="number" id="icol_import_id" class="form-control form-control-sm inline-col-filter"
+                                       data-col="import_id" data-op="equals"
+                                       placeholder="ID..."
+                                       style="width:70px"
+                                       value="{{ adv_filters | selectattr('col','eq','import_id') | map(attribute='val') | first | default('') }}">
+                            </th>
+                            <th><span class="text-muted small">—</span></th>
+                            <th style="position:relative">
+                                <input type="text" id="icol_variable_types" class="form-control form-control-sm inline-col-filter"
+                                       data-col="variable_types" data-op="contains"
+                                       placeholder="Tipo..."
+                                       autocomplete="off"
+                                       value="{{ adv_filters | selectattr('col','eq','variable_types') | map(attribute='val') | first | default('') }}">
+                                <ul id="icol_variable_types_ac" class="list-group shadow-sm position-absolute d-none"
+                                    style="z-index:1050;min-width:160px;max-height:200px;overflow-y:auto;top:100%;left:0"></ul>
+                            </th>
+                            <th>
+                                <button type="button" class="btn btn-sm btn-outline-danger" onclick="icolClearAll()" title="Cancella filtri colonna">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for star in stars %}
+                        <tr data-gaia-id="{{ star.gaia_id }}">
+                            {% if is_superuser %}
+                            <td>
+                                <input type="checkbox" class="star-checkbox" value="{{ star.gaia_id }}" onchange="updateBulkActionsPanel()">
+                            </td>
+                            {% endif %}
+                            <td>
+                                <a href="{{ url_for('admin.star_detail', gaia_id=star.gaia_id) }}">
+                                    <code>{{ star.gaia_id }}</code>
+                                </a>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-primary">{{ star.total_points }}</span>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-secondary">{{ star.num_catalogs }}</span>
+                                <small class="d-block text-muted">
+                                    {{ star.catalogs[:3]|join(', ') }}{% if star.catalogs|length > 3 %}...{% endif %}
+                                </small>
+                            </td>
+                            <td>
+                                {% if star.min_hjd and star.max_hjd %}
+                                <small>
+                                    {{ "%.1f"|format(star.min_hjd) }} -<br>
+                                    {{ "%.1f"|format(star.max_hjd) }}
+                                </small>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if star.min_mag and star.max_mag %}
+                                <small>
+                                    {{ "%.2f"|format(star.min_mag) }} -
+                                    {{ "%.2f"|format(star.max_mag) }}
+                                </small>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="preview-column d-none">
+                                <div id="plot-{{ star.gaia_id }}" style="width: 300px; height: 120px; position: relative;">
+                                    <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #f5f5f5; border-radius: 4px;">
+                                        <small class="text-muted">Caricamento...</small>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                {% if star.import_info %}
+                                <a href="{{ url_for('admin.stars_catalog_page', adv_filters='import_id:equals:' ~ star.import_info.id) }}" class="badge bg-info text-dark" style="text-decoration: none;">
+                                    #{{ star.import_info.id }}
+                                </a>
+                                <small class="d-block text-muted">{{ star.import_info.created_at }}</small>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if star.all_assignments %}
+                                <div class="badge-group">
+                                    {% for assign in star.all_assignments %}
+                                    <span class="badge bg-warning text-dark d-inline-block mb-1">
+                                        <i class="bi bi-pin-fill"></i> {{ assign.association_name }}
+                                        <small class="d-block">{{ assign.assigned_at }}</small>
+                                    </span>
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                                {% if star.project_code %}
+                                <span class="badge {% if star.project_is_closed %}bg-danger{% else %}bg-success{% endif %} d-inline-block mb-1"
+                                      title="Progetto {{ star.project_state|lower }}">
+                                    <i class="bi bi-check-circle"></i> {{ star.project_code }}
+                                    <small class="d-block">{{ star.project_state }}</small>
+                                </span>
+                                {% endif %}
+                            </td>
+                            <!-- NUOVO: Colonna Variable Type -->
+                            <td style="font-size: 0.85rem;">
+                                {% if star.is_known_variable %}
+                                    <span class="badge bg-success me-1" title="Variabile nota in catalogo">
+                                        <i class="bi bi-check-circle me-1"></i>Nota
+                                    </span>
+                                {% endif %}
+
+                                {% if star.variable_types %}
+                                    {% for vtype in star.variable_types[:3] %}
+                                        <span class="badge bg-info me-1">{{ vtype }}</span>
+                                    {% endfor %}
+                                    {% if star.variable_types|length > 3 %}
+                                        <span class="badge bg-secondary" title="E altri {{ star.variable_types|length - 3 }} tipi">
+                                            +{{ star.variable_types|length - 3 }}
+                                        </span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted small">-</span>
+                                {% endif %}
+
+                                <!-- Tooltip con catalog_matches -->
+                                {% if star.catalog_matches %}
+                                    <br><small class="text-muted" title="Cataloghi di match: {{ star.catalog_matches|join(', ') }}">
+                                        Match: {{ (star.catalog_matches|join(', '))[:50] }}{% if (star.catalog_matches|join(', '))|length > 50 %}...{% endif %}
+                                    </small>
+                                {% endif %}
+                            </td>
+                            <td class="text-nowrap">
+                                {% if star.project_id and star.project_state and star.project_state not in ['incoming', 'cancelled'] %}
+                                <!-- Editor link quando stella ha progetto attivo -->
+                                <a href="{{ url_for('variable_stars.index') }}?project_id={{ star.project_id }}"
+                                   class="btn btn-sm btn-outline-info me-1"
+                                   target="_blank"
+                                   title="Apri in editor">
+                                    <i class="bi bi-graph-up"></i>
+                                </a>
+                                {% elif (is_admin or is_superuser) and not star.project_id %}
+                                <!-- Editor link per admin/superuser su stella senza progetto -->
+                                <a href="{{ url_for('variable_stars.index') }}?gaia_id={{ star.gaia_id }}"
+                                   class="btn btn-sm btn-outline-info me-1"
+                                   target="_blank"
+                                   title="Apri in editor per esaminare">
+                                    <i class="bi bi-graph-up"></i>
+                                </a>
+                                {% endif %}
+                                {% if star.can_create_project %}
+                                <!-- Admin: crea progetto da assegnazione -->
+                                <button class="btn btn-sm btn-warning me-1"
+                                        onclick="createProject('{{ star.gaia_id }}')"
+                                        title="Crea progetto da questa stella">
+                                    <i class="bi bi-plus-circle"></i>
+                                </button>
+                                {% endif %}
+                                {% if star.can_self_assign %}
+                                <!-- Analyst: auto-assegnazione progetto -->
+                                <button class="btn btn-sm btn-success me-1"
+                                        onclick="selfAssign({{ star.project_id }}, '{{ star.project_code }}')"
+                                        title="Assegnami questo progetto">
+                                    <i class="bi bi-person-check"></i>
+                                </button>
+                                {% endif %}
+                                <a href="{{ url_for('admin.star_detail', gaia_id=star.gaia_id) }}"
+                                   class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="{% if is_superuser %}9{% else %}8{% endif %}" class="text-center text-muted py-4">
+                                <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                                {% if is_superuser %}
+                                {% if total_stars == 0 %}
+                                Nessuna stella nel catalogo.
+                                {% else %}
+                                Nessuna stella corrisponde ai filtri applicati.
+                                {% endif %}
+                                {% elif is_admin %}
+                                Nessuna stella assegnata alla tua associazione.
+                                <br>
+                                <small>Attendi che il superuser assegni delle stelle.</small>
+                                {% else %}
+                                Nessuna stella disponibile.
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Paginazione -->
+            {% if total_stars > per_page %}
+            <nav class="mt-3">
+                <ul class="pagination justify-content-center">
+                    {% if current_page > 1 %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page=1&state={{ state_filter }}&date_filter={{ date_filter }}&catalog={{ catalog_filter }}&import_id={{ import_filter }}&gaia_id={{ gaia_search }}&sort={{ sort_by }}&order={{ sort_order }}">
+                            <i class="bi bi-chevron-double-left"></i>
+                        </a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ current_page - 1 }}&state={{ state_filter }}&date_filter={{ date_filter }}&catalog={{ catalog_filter }}&import_id={{ import_filter }}&gaia_id={{ gaia_search }}&sort={{ sort_by }}&order={{ sort_order }}">
+                            <i class="bi bi-chevron-left"></i>
+                        </a>
+                    </li>
+                    {% endif %}
+
+                    {% set start_page = [current_page - 2, 1]|max %}
+                    {% set end_page = [(total_stars / per_page)|int + 1, current_page + 2]|min %}
+
+                    {% for page_num in range(start_page, end_page + 1) %}
+                        {% if page_num * per_page <= total_stars or (page_num - 1) * per_page < total_stars %}
+                        <li class="page-item {% if page_num == current_page %}active{% endif %}">
+                            <a class="page-link" href="?page={{ page_num }}&state={{ state_filter }}&date_filter={{ date_filter }}&catalog={{ catalog_filter }}&import_id={{ import_filter }}&gaia_id={{ gaia_search }}&sort={{ sort_by }}&order={{ sort_order }}">
+                                {{ page_num }}
+                            </a>
+                        </li>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if current_page * per_page < total_stars %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ current_page + 1 }}&state={{ state_filter }}&date_filter={{ date_filter }}&catalog={{ catalog_filter }}&import_id={{ import_filter }}&gaia_id={{ gaia_search }}&sort={{ sort_by }}&order={{ sort_order }}">
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ (total_stars / per_page)|int + 1 }}&state={{ state_filter }}&date_filter={{ date_filter }}&catalog={{ catalog_filter }}&import_id={{ import_filter }}&gaia_id={{ gaia_search }}&sort={{ sort_by }}&order={{ sort_order }}">
+                            <i class="bi bi-chevron-double-right"></i>
+                        </a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Carica Arrow prima dello script -->
+<script src="{{ url_for('admin.static', filename='js/Arrow.es2015.min.js') }}"></script>
+
+<script>
+// ============================================================================
+// FILTER BUILDER (ServiceNow-style) - prefisso fb
+// ============================================================================
+
+const FB_COLUMNS = {{ (filterable_columns or {}) | tojson }};
+
+const FB_OPS_BY_TYPE = {
+    text:    [{v:'contains',l:'contiene'}, {v:'not_contains',l:'non contiene'},
+               {v:'starts_with',l:'inizia con'}, {v:'equals',l:'uguale a'},
+               {v:'not_equals',l:'diverso da'}, {v:'is_empty',l:'è vuoto'},
+               {v:'is_not_empty',l:'non è vuoto'}],
+    integer: [{v:'equals',l:'='}, {v:'not_equals',l:'≠'}, {v:'gt',l:'>'},
+               {v:'gte',l:'>='}, {v:'lt',l:'<'}, {v:'lte',l:'≤'},
+               {v:'is_empty',l:'è vuoto'}, {v:'is_not_empty',l:'non è vuoto'}],
+    float:   [{v:'equals',l:'='}, {v:'not_equals',l:'≠'}, {v:'gt',l:'>'},
+               {v:'gte',l:'>='}, {v:'lt',l:'<'}, {v:'lte',l:'≤'},
+               {v:'is_empty',l:'è vuoto'}, {v:'is_not_empty',l:'non è vuoto'}],
+    boolean: [{v:'is_true',l:'è vero (Sì)'}, {v:'is_false',l:'è falso (No)'}],
+    csv_set: [{v:'contains',l:'contiene'}, {v:'not_contains',l:'non contiene'}],
+    date:    [{v:'equals',l:'uguale a'}, {v:'gt',l:'dopo'}, {v:'gte',l:'dopo o il'},
+               {v:'lt',l:'prima di'}, {v:'lte',l:'prima o il'}]
+};
+
+const FB_NO_VALUE_OPS = new Set(['is_empty','is_not_empty','is_true','is_false']);
+
+let fbActiveFilters = [];
+let fbEditingIndex = null;  // null = add mode, N = edit mode indice N
+
+// Init: popola colonna picker e ripristina filtri dall'URL
+document.addEventListener('DOMContentLoaded', function() {
+    const colPicker = document.getElementById('fbColPicker');
+    Object.entries(FB_COLUMNS).forEach(([key, cfg]) => {
+        const opt = document.createElement('option');
+        opt.value = key;
+        opt.textContent = cfg.label;
+        colPicker.appendChild(opt);
+    });
+    fbRestoreFromURL();
+    fbRenderPills();
+});
+
+function fbOnColumnChange() {
+    const col = document.getElementById('fbColPicker').value;
+    const opPicker = document.getElementById('fbOpPicker');
+    const addBtn = document.getElementById('fbAddBtn');
+    opPicker.innerHTML = '<option value="">-- Operatore --</option>';
+    opPicker.disabled = !col;
+    addBtn.disabled = true;
+    fbResetValueInput();
+    if (!col) return;
+    const colType = FB_COLUMNS[col].type;
+    FB_OPS_BY_TYPE[colType].forEach(({v, l}) => {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = l;
+        opPicker.appendChild(opt);
+    });
+}
+
+function fbOnOperatorChange() {
+    const col = document.getElementById('fbColPicker').value;
+    const op  = document.getElementById('fbOpPicker').value;
+    const addBtn = document.getElementById('fbAddBtn');
+    if (!op) { addBtn.disabled = true; return; }
+    const colType = FB_COLUMNS[col]?.type;
+
+    if (FB_NO_VALUE_OPS.has(op)) {
+        fbResetValueInput(true);
+        addBtn.disabled = false;
+        return;
+    }
+
+    fbResetValueInput();
+    addBtn.disabled = true;
+
+    if (colType === 'csv_set') {
+        fbFetchAndBuildValueDropdown(col);
+    } else {
+        const inp = document.getElementById('fbValueInput');
+        inp.disabled = false;
+        inp.placeholder = colType === 'date' ? 'AAAA-MM-GG' : 'Valore...';
+        inp.oninput = () => { addBtn.disabled = inp.value.trim() === ''; };
+    }
+}
+
+async function fbFetchAndBuildValueDropdown(col, prefillValue) {
+    const spinner = document.getElementById('fbLoadingSpinner');
+    const container = document.getElementById('fbValueContainer');
+    const addBtn = document.getElementById('fbAddBtn');
+    spinner.style.display = '';
+    try {
+        const assocId = new URLSearchParams(window.location.search).get('association_id') || '';
+        const url = `/agata/admin/api/stars-catalog/field-values?field=${encodeURIComponent(col)}&association_id=${assocId}`;
+        const resp = await fetch(url);
+        const data = await resp.json();
+        if (data.values && data.values.length > 0) {
+            let sel = document.getElementById('fbValueSelect');
+            if (!sel) {
+                sel = document.createElement('select');
+                sel.id = 'fbValueSelect';
+                sel.className = 'form-select form-select-sm';
+                sel.style.minWidth = '200px';
+                container.appendChild(sel);
+            }
+            sel.innerHTML = '<option value="">-- Seleziona --</option>';
+            data.values.forEach(v => {
+                const opt = document.createElement('option');
+                opt.value = v;
+                opt.textContent = v;
+                sel.appendChild(opt);
+            });
+            sel.style.display = '';
+            document.getElementById('fbValueInput').style.display = 'none';
+            if (prefillValue) { sel.value = prefillValue; }
+            sel.onchange = () => { addBtn.disabled = sel.value === ''; };
+            addBtn.disabled = sel.value === '';
+        } else {
+            const inp = document.getElementById('fbValueInput');
+            inp.disabled = false;
+            inp.oninput = e => { addBtn.disabled = e.target.value.trim() === ''; };
+        }
+    } catch(e) {
+        const inp = document.getElementById('fbValueInput');
+        inp.disabled = false;
+        inp.oninput = e => { addBtn.disabled = e.target.value.trim() === ''; };
+    } finally {
+        spinner.style.display = 'none';
+    }
+}
+
+function fbResetValueInput(hideAll) {
+    const inp = document.getElementById('fbValueInput');
+    inp.value = '';
+    inp.disabled = true;
+    inp.style.display = '';
+    inp.oninput = null;
+    const sel = document.getElementById('fbValueSelect');
+    if (sel) sel.remove();
+    if (hideAll) inp.style.display = 'none';
+}
+
+function fbAddFilter() {
+    const col = document.getElementById('fbColPicker').value;
+    const op  = document.getElementById('fbOpPicker').value;
+    if (!col || !op) return;
+
+    let val = '';
+    if (!FB_NO_VALUE_OPS.has(op)) {
+        const sel = document.getElementById('fbValueSelect');
+        const inp = document.getElementById('fbValueInput');
+        if (sel && sel.style.display !== 'none') {
+            val = sel.value;
+        } else {
+            val = inp.value.trim();
+        }
+        if (!val) return;
+    }
+
+    const colType = FB_COLUMNS[col].type;
+    const colLabel = FB_COLUMNS[col].label;
+    const opLabel = (FB_OPS_BY_TYPE[colType] || []).find(o => o.v === op)?.l || op;
+
+    if (fbEditingIndex !== null) {
+        fbActiveFilters[fbEditingIndex] = {col, op, val, colLabel, opLabel};
+        fbEditingIndex = null;
+        document.getElementById('fbAddBtnIcon').className = 'bi bi-plus-circle me-1';
+        document.getElementById('fbAddBtnLabel').textContent = 'Aggiungi';
+        document.getElementById('fbCancelEditBtn').classList.add('d-none');
+    } else {
+        fbActiveFilters.push({col, op, val, colLabel, opLabel});
+    }
+    fbRenderPills();
+
+    // Reset picker
+    document.getElementById('fbColPicker').value = '';
+    fbOnColumnChange();
+}
+
+function fbRemoveFilter(idx) {
+    if (fbEditingIndex === idx) fbCancelEdit();
+    else if (fbEditingIndex !== null && fbEditingIndex > idx) fbEditingIndex--;
+    fbActiveFilters.splice(idx, 1);
+    fbRenderPills();
+}
+
+function fbRenderPills() {
+    const row = document.getElementById('activePillsRow');
+    const counter = document.getElementById('activePillsCount');
+    row.innerHTML = '';
+    if (fbActiveFilters.length === 0) {
+        row.style.display = 'none';
+        counter.classList.add('d-none');
+        return;
+    }
+    row.style.removeProperty('display');
+    counter.classList.remove('d-none');
+    counter.textContent = fbActiveFilters.length;
+
+    fbActiveFilters.forEach((f, idx) => {
+        const label = FB_NO_VALUE_OPS.has(f.op)
+            ? `${f.colLabel} <em>${f.opLabel}</em>`
+            : `${f.colLabel} <em>${f.opLabel}</em> <strong>"${f.val}"</strong>`;
+        const pill = document.createElement('span');
+        const isEditing = (fbEditingIndex === idx);
+        pill.className = isEditing
+            ? 'badge bg-warning text-dark d-inline-flex align-items-center gap-1 px-2 py-1'
+            : 'badge bg-primary d-inline-flex align-items-center gap-1 px-2 py-1';
+        pill.style.fontSize = '0.8rem';
+        pill.style.fontWeight = 'normal';
+        pill.innerHTML = `<span style="cursor:pointer" title="Modifica filtro" onclick="fbStartEdit(${idx})">${label}</span>`
+            + `&nbsp;<i class="bi bi-x" style="cursor:pointer;font-size:0.75rem" title="Rimuovi" onclick="fbRemoveFilter(${idx})"></i>`;
+        row.appendChild(pill);
+    });
+}
+
+function fbSerialize() {
+    return fbActiveFilters
+        .map(f => `${f.col}:${f.op}:${encodeURIComponent(f.val)}`)
+        .join(',');
+}
+
+function fbApply() {
+    const params = new URLSearchParams(window.location.search);
+    params.set('page', '1');
+    params.delete('load');
+    const serialized = fbSerialize();
+    if (serialized) {
+        params.set('adv_filters', serialized);
+    } else {
+        params.delete('adv_filters');
+    }
+    window.location.href = '?' + params.toString();
+}
+
+function fbClearAll() {
+    fbActiveFilters = [];
+    fbEditingIndex = null;
+    fbRenderPills();
+    const params = new URLSearchParams(window.location.search);
+    params.delete('adv_filters');
+    params.delete('load');
+    params.set('page', '1');
+    window.location.href = '?' + params.toString();
+}
+
+function fbSetFilter(col, op, val) {
+    fbActiveFilters = fbActiveFilters.filter(f => f.col !== col);
+    const colLabel = FB_COLUMNS[col]?.label || col;
+    const colType = FB_COLUMNS[col]?.type;
+    const opLabel = (FB_OPS_BY_TYPE[colType] || []).find(o => o.v === op)?.l || op;
+    fbActiveFilters.push({col, op, val, colLabel, opLabel});
+    fbApply();
+}
+
+function fbRemoveCol(col) {
+    fbActiveFilters = fbActiveFilters.filter(f => f.col !== col);
+    fbApply();
+}
+
+function fbRestoreFromURL() {
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get('adv_filters') || '';
+    if (!raw) return;
+    raw.split(',').forEach(token => {
+        const first = token.indexOf(':');
+        if (first < 0) return;
+        const col = token.slice(0, first);
+        const rest = token.slice(first + 1);
+        const second = rest.indexOf(':');
+        const op = second >= 0 ? rest.slice(0, second) : rest;
+        const val = second >= 0 ? decodeURIComponent(rest.slice(second + 1)) : '';
+        if (!FB_COLUMNS[col]) return;
+        const colType = FB_COLUMNS[col].type;
+        const colLabel = FB_COLUMNS[col].label;
+        const opLabel = (FB_OPS_BY_TYPE[colType] || []).find(o => o.v === op)?.l || op;
+        fbActiveFilters.push({col, op, val, colLabel, opLabel});
+    });
+}
+
+function fbStartEdit(idx) {
+    const f = fbActiveFilters[idx];
+    if (!f) return;
+    fbEditingIndex = idx;
+
+    // Apri il panel se collassato
+    const panel = document.getElementById('filterBuilderPanel');
+    if (panel && !panel.classList.contains('show')) {
+        bootstrap.Collapse.getOrCreateInstance(panel).show();
+    }
+
+    // Popola colonna
+    const colPicker = document.getElementById('fbColPicker');
+    colPicker.value = f.col;
+    fbOnColumnChange();
+
+    // Popola operatore
+    const opPicker = document.getElementById('fbOpPicker');
+    opPicker.value = f.op;
+    fbOnOperatorChange();
+
+    // Popola valore
+    if (!FB_NO_VALUE_OPS.has(f.op)) {
+        const colType = FB_COLUMNS[f.col]?.type;
+        if (colType === 'csv_set') {
+            fbFetchAndBuildValueDropdown(f.col, f.val);
+        } else {
+            setTimeout(() => {
+                const inp = document.getElementById('fbValueInput');
+                if (inp && !inp.disabled) {
+                    inp.value = f.val;
+                    document.getElementById('fbAddBtn').disabled = false;
+                }
+            }, 0);
+        }
+    }
+
+    // Aggiorna UI bottone
+    document.getElementById('fbAddBtnIcon').className = 'bi bi-pencil me-1';
+    document.getElementById('fbAddBtnLabel').textContent = 'Aggiorna';
+    document.getElementById('fbCancelEditBtn').classList.remove('d-none');
+
+    // Scroll al builder
+    const card = document.getElementById('filterBuilderCard');
+    if (card) card.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+}
+
+function fbCancelEdit() {
+    fbEditingIndex = null;
+    document.getElementById('fbColPicker').value = '';
+    fbOnColumnChange();
+    document.getElementById('fbAddBtnIcon').className = 'bi bi-plus-circle me-1';
+    document.getElementById('fbAddBtnLabel').textContent = 'Aggiungi';
+    document.getElementById('fbCancelEditBtn').classList.add('d-none');
+    fbRenderPills();
+}
+
+// Calcola data ISO YYYY-MM-DD di N giorni fa
+function fbDateOffset(days) {
+    return new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+}
+
+// Applica sort/order dai select nel card
+function applySortOrder() {
+    const sort = document.getElementById('sortBySelect').value;
+    const order = document.getElementById('sortOrderSelect').value;
+    const params = new URLSearchParams(window.location.search);
+    params.set('sort', sort);
+    params.set('order', order);
+    params.set('page', '1');
+    params.delete('load');
+    window.location.href = '?' + params.toString();
+}
+
+// Applica ordinamento cliccando su intestazione colonna (toggle asc/desc)
+function fbApplySortHeader(col) {
+    const params = new URLSearchParams(window.location.search);
+    const cur = params.get('sort');
+    const curOrd = params.get('order') || 'desc';
+    params.set('sort', col);
+    params.set('order', (cur === col && curOrd === 'asc') ? 'desc' : 'asc');
+    params.set('page', '1');
+    params.delete('load');
+    window.location.href = '?' + params.toString();
+}
+
+
+// Propaga adv_filters + sort + order ai link di paginazione
+document.addEventListener('DOMContentLoaded', function() {
+    const params = new URLSearchParams(window.location.search);
+    const advFiltersVal = params.get('adv_filters');
+    const sortVal = params.get('sort');
+    const orderVal = params.get('order');
+    if (!advFiltersVal && !sortVal) return;
+    document.querySelectorAll('.pagination .page-link').forEach(link => {
+        try {
+            const u = new URL(link.href, window.location.origin);
+            if (advFiltersVal) u.searchParams.set('adv_filters', advFiltersVal);
+            if (sortVal) u.searchParams.set('sort', sortVal);
+            if (orderVal) u.searchParams.set('order', orderVal);
+            link.href = u.toString();
+        } catch(e) {}
+    });
+});
+
+// ============================================================================
+// FILTRI INLINE PER COLONNA (riga sotto intestazioni, stile ServiceNow)
+// ============================================================================
+
+// Cache valori autocomplete già scaricati (evita fetch ripetuti)
+const _icolAcCache = {};
+
+// Debounce: applica filtri dopo 600ms di pausa dalla digitazione
+let _icolDebounceTimer = null;
+function icolScheduleApply() {
+    clearTimeout(_icolDebounceTimer);
+    _icolDebounceTimer = setTimeout(icolApply, 600);
+}
+
+// Costruisce i filtri correnti dalla riga inline
+// Restituisce array [{col, op, val}] da mergiare con fbActiveFilters
+function icolCollect() {
+    const filters = [];
+    document.querySelectorAll('.inline-col-filter').forEach(inp => {
+        const val = inp.value.trim();
+        if (!val) return;
+        filters.push({col: inp.dataset.col, op: inp.dataset.op, val});
+    });
+    return filters;
+}
+
+// Applica: mergia filtri inline con filtri del builder, naviga
+function icolApply() {
+    // Parti dai filtri del builder (fbActiveFilters), rimuovi quelli
+    // che hanno la stessa colonna dei filtri inline (evita duplicati)
+    const inlineCols = new Set(
+        Array.from(document.querySelectorAll('.inline-col-filter'))
+            .map(inp => inp.dataset.col)
+    );
+    const builderOnly = fbActiveFilters.filter(f => !inlineCols.has(f.col));
+    const inlineFilters = icolCollect();
+
+    // Combina: builder (senza colonne inline) + inline
+    const all = [...builderOnly, ...inlineFilters];
+
+    const params = new URLSearchParams(window.location.search);
+    params.set('page', '1');
+    params.delete('load');
+    if (all.length > 0) {
+        params.set('adv_filters', all.map(f =>
+            `${f.col}:${f.op}:${encodeURIComponent(f.val)}`
+        ).join(','));
+    } else {
+        params.delete('adv_filters');
+    }
+    window.location.href = '?' + params.toString();
+}
+
+// Cancella tutti i filtri inline e naviga
+function icolClearAll() {
+    document.querySelectorAll('.inline-col-filter').forEach(inp => inp.value = '');
+    // Rimuovi anche i filtri inline dall'adv_filters corrente
+    const inlineCols = new Set(
+        Array.from(document.querySelectorAll('.inline-col-filter'))
+            .map(inp => inp.dataset.col)
+    );
+    const builderOnly = fbActiveFilters.filter(f => !inlineCols.has(f.col));
+    const params = new URLSearchParams(window.location.search);
+    params.set('page', '1');
+    if (builderOnly.length > 0) {
+        params.set('adv_filters', builderOnly.map(f =>
+            `${f.col}:${f.op}:${encodeURIComponent(f.val)}`
+        ).join(','));
+    } else {
+        params.delete('adv_filters');
+    }
+    window.location.href = '?' + params.toString();
+}
+
+// Autocomplete per campi csv_set (catalogs, variable_types)
+async function icolFetchAc(field) {
+    if (_icolAcCache[field]) return _icolAcCache[field];
+    try {
+        const assocId = new URLSearchParams(window.location.search).get('association_id') || '';
+        const resp = await fetch(`/agata/admin/api/stars-catalog/field-values?field=${field}&association_id=${assocId}`);
+        const data = await resp.json();
+        _icolAcCache[field] = data.values || [];
+    } catch(e) {
+        _icolAcCache[field] = [];
+    }
+    return _icolAcCache[field];
+}
+
+function icolSetupAc(inputId, listId, field) {
+    const inp = document.getElementById(inputId);
+    const list = document.getElementById(listId);
+    if (!inp || !list) return;
+
+    let allValues = [];
+
+    inp.addEventListener('focus', async () => {
+        allValues = await icolFetchAc(field);
+        icolShowAc(inp, list, allValues);
+    });
+
+    inp.addEventListener('input', () => {
+        icolShowAc(inp, list, allValues);
+    });
+
+    inp.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); icolApply(); }
+        if (e.key === 'Escape') { list.classList.add('d-none'); }
+    });
+
+    // Chiudi dropdown cliccando fuori
+    document.addEventListener('click', e => {
+        if (!inp.contains(e.target) && !list.contains(e.target)) {
+            list.classList.add('d-none');
+        }
+    });
+}
+
+function icolShowAc(inp, list, allValues) {
+    const q = inp.value.toLowerCase();
+    const matches = q
+        ? allValues.filter(v => v.toLowerCase().includes(q))
+        : allValues;
+    if (matches.length === 0) { list.classList.add('d-none'); return; }
+    list.innerHTML = '';
+    matches.slice(0, 30).forEach(v => {
+        const li = document.createElement('li');
+        li.className = 'list-group-item list-group-item-action py-1 px-2';
+        li.style.cursor = 'pointer';
+        li.style.fontSize = '0.82rem';
+        // Evidenzia la parte corrispondente
+        if (q) {
+            const idx = v.toLowerCase().indexOf(q);
+            li.innerHTML = v.slice(0, idx) +
+                `<strong>${v.slice(idx, idx + q.length)}</strong>` +
+                v.slice(idx + q.length);
+        } else {
+            li.textContent = v;
+        }
+        li.addEventListener('mousedown', e => {
+            e.preventDefault(); // evita blur prima del click
+            inp.value = v;
+            list.classList.add('d-none');
+            icolApply();
+        });
+        list.appendChild(li);
+    });
+    list.classList.remove('d-none');
+}
+
+// Inizializzazione filtri inline
+document.addEventListener('DOMContentLoaded', function() {
+    // Collega tutti gli input: applica solo su Enter
+    document.querySelectorAll('.inline-col-filter').forEach(inp => {
+        inp.addEventListener('keydown', e => {
+            if (e.key === 'Enter') { e.preventDefault(); icolApply(); }
+        });
+    });
+
+    // Setup autocomplete per campi csv_set
+    icolSetupAc('icol_catalogs', 'icol_catalogs_ac', 'catalogs');
+    icolSetupAc('icol_variable_types', 'icol_variable_types_ac', 'variable_types');
+});
+
+// ============================================================================
+// Selezione multipla
+function toggleSelectAll(checkbox) {
+    const checkboxes = document.querySelectorAll('.star-checkbox');
+    checkboxes.forEach(cb => cb.checked = checkbox.checked);
+    updateBulkActionsPanel();
+}
+
+function getSelectedStars() {
+    const checkboxes = document.querySelectorAll('.star-checkbox:checked');
+    return Array.from(checkboxes).map(cb => cb.value);
+}
+
+function updateBulkActionsPanel() {
+    const selected = getSelectedStars();
+    const panel = document.getElementById('bulkActionsPanel');
+    const count = document.getElementById('selectedCount');
+
+    if (selected.length > 0) {
+        panel.classList.remove('d-none');
+        count.textContent = selected.length;
+    } else {
+        panel.classList.add('d-none');
+    }
+}
+
+function clearSelection() {
+    document.querySelectorAll('.star-checkbox').forEach(cb => cb.checked = false);
+    document.getElementById('selectAllCheckbox').checked = false;
+    updateBulkActionsPanel();
+}
+
+function openBulkAssignModal() {
+    const selected = getSelectedStars();
+    if (selected.length === 0) {
+        alert('Seleziona almeno una stella');
+        return;
+    }
+
+    const modalHtml = `
+    <div class="modal fade" id="bulkAssignModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Assegna ${selected.length} stella${selected.length > 1 ? 'e' : ''}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Associazione <span class="text-danger">*</span></label>
+                        <select id="bulkAssocSelect" class="form-select">
+                            <option value="">Seleziona associazione...</option>
+                            {% for assoc in associations %}
+                            <option value="{{ assoc.id }}">{{ assoc.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="alert alert-info small">
+                        <i class="bi bi-info-circle me-2"></i>
+                        L'assegnazione avverrà dopo la conferma.
+                    </div>
+                    <div id="bulkAssignMessage"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                    <button type="button" class="btn btn-primary" onclick="confirmBulkAssign('${selected.join(',')}')">
+                        <i class="bi bi-check-circle me-1"></i>Conferma Assegnazione
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    `;
+
+    // Rimuovi vecchio modal se esiste
+    const oldModal = document.getElementById('bulkAssignModal');
+    if (oldModal) oldModal.remove();
+
+    // Aggiungi nuovo modal
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // Mostra modal
+    const modal = new bootstrap.Modal(document.getElementById('bulkAssignModal'));
+    modal.show();
+}
+
+function confirmBulkAssign(gaiaIdsCsv) {
+    const gaiaIds = gaiaIdsCsv.split(',').filter(x => x.trim());
+    const associationId = document.getElementById('bulkAssocSelect').value;
+
+    if (!associationId) {
+        alert('Seleziona un\'associazione');
+        return;
+    }
+
+    // Disabilita pulsanti
+    const buttons = document.querySelectorAll('.modal-footer button');
+    buttons.forEach(b => b.disabled = true);
+
+    // Mostra messaggio di caricamento
+    const messageDiv = document.getElementById('bulkAssignMessage');
+    messageDiv.innerHTML = '<div class="spinner-border spinner-border-sm me-2"></div>Assegnazione in corso...';
+    messageDiv.className = 'alert alert-info mt-3';
+
+    fetch('/agata/admin/api/stars-catalog/bulk-assign', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            gaia_ids: gaiaIds,
+            association_id: parseInt(associationId)
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            let msg = `<i class="bi bi-check-circle me-2"></i>✓ Assegnate ${data.assigned} stelle`;
+            if (data.already_assigned > 0) msg += ` (${data.already_assigned} già presenti)`;
+            if (data.failed > 0) msg += ` (${data.failed} errori)`;
+
+            messageDiv.innerHTML = msg;
+            messageDiv.className = 'alert alert-success mt-3';
+
+            // Ricarica dopo 2 secondi
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            messageDiv.innerHTML = '<i class="bi bi-exclamation-circle me-2"></i>✗ Errore: ' + data.error;
+            messageDiv.className = 'alert alert-danger mt-3';
+            buttons.forEach(b => b.disabled = false);
+        }
+    })
+    .catch(err => {
+        messageDiv.innerHTML = '<i class="bi bi-exclamation-circle me-2"></i>✗ Errore di rete: ' + err;
+        messageDiv.className = 'alert alert-danger mt-3';
+        buttons.forEach(b => b.disabled = false);
+    });
+}
+
+function openBulkDeleteModal() {
+    const selectedStars = getSelectedStars();
+
+    if (selectedStars.length === 0) {
+        alert('Seleziona almeno una stella');
+        return;
+    }
+
+    // Get total count from current filter
+    const totalInFilter = {{ total_stars }};
+    const allRowsOnPage = document.querySelectorAll('tr[data-gaia-id]').length;
+    const isAllOnPageSelected = selectedStars.length === allRowsOnPage;
+
+    const modalHtml = `
+    <div class="modal fade" id="bulkDeleteModal" tabindex="-1" aria-labelledby="bulkDeleteModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title" id="bulkDeleteModalLabel">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>Conferma Cancellazione
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        <strong>ATTENZIONE:</strong> Questa operazione cancellerà <u>tutti i dati fotometrici</u> delle stelle dal catalogo locale.
+                    </div>
+
+                    <p><strong>Hai ${selectedStars.length} stella/e selezionata/e nella pagina corrente.</strong></p>
+
+                    ${totalInFilter > allRowsOnPage ? `
+                    <p>Il filtro corrente contiene <strong>${totalInFilter} stelle totali</strong> (su ${allRowsOnPage} visibili in questa pagina).</p>
+                    ` : ''}
+
+                    <!-- DELETE MODE SELECTION -->
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="radio" name="deleteMode" id="deleteModeSelected" value="selected" checked>
+                        <label class="form-check-label" for="deleteModeSelected">
+                            <strong>Cancella solo le ${selectedStars.length} stelle selezionate</strong>
+                            <br><small class="text-muted">Elimina solo le stelle con checkbox selezionati in questa pagina</small>
+                        </label>
+                    </div>
+
+                    ${totalInFilter > allRowsOnPage && isAllOnPageSelected ? `
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="radio" name="deleteMode" id="deleteModeAll" value="all">
+                        <label class="form-check-label" for="deleteModeAll">
+                            <strong class="text-danger">Cancella TUTTE le ${totalInFilter} stelle nel filtro corrente</strong>
+                            <br><small class="text-muted">⚠️ Include anche stelle non visibili in questa pagina</small>
+                        </label>
+                    </div>
+                    ` : ''}
+
+                    <!-- Note about protected stars -->
+                    <div class="alert alert-info mt-3">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <small><strong>Nota:</strong> Le stelle con assegnazioni o progetti attivi non verranno cancellate.</small>
+                    </div>
+
+                    <!-- Progress/result message -->
+                    <div id="bulkDeleteMessage" class="mt-3"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                    <button type="button" class="btn btn-danger" onclick="confirmBulkDelete()">
+                        <i class="bi bi-trash me-1"></i>Conferma Cancellazione
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    `;
+
+    // Remove old modal if exists
+    const oldModal = document.getElementById('bulkDeleteModal');
+    if (oldModal) oldModal.remove();
+
+    // Add modal to body
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('bulkDeleteModal'));
+    modal.show();
+}
+
+function confirmBulkDelete() {
+    const deleteMode = document.querySelector('input[name="deleteMode"]:checked').value;
+    let requestBody;
+    let displayCount;
+
+    if (deleteMode === 'selected') {
+        // Delete only selected stars
+        const gaiaIdsToDelete = getSelectedStars();
+        if (gaiaIdsToDelete.length === 0) {
+            alert('Nessuna stella da cancellare');
+            return;
+        }
+        displayCount = gaiaIdsToDelete.length;
+        requestBody = {
+            gaia_ids: gaiaIdsToDelete,
+            delete_mode: 'selected'
+        };
+    } else {
+        // Delete all in filter
+        displayCount = {{ total_stars }};
+
+        // Raccogli i parametri di filtro dalla URL
+        const params = new URLSearchParams(window.location.search);
+        requestBody = {
+            delete_mode: 'all_in_filter',
+            import_id: params.get('import_id') || '',
+            catalog: params.get('catalog') || '',
+            gaia_id: params.get('gaia_id') || ''
+        };
+    }
+
+    // Final confirmation
+    if (!confirm(`⚠️ CONFERMA FINALE\n\nStai per cancellare ${displayCount} stelle.\n\nConfermi?`)) {
+        return;
+    }
+
+    // Disable buttons
+    const buttons = document.querySelectorAll('#bulkDeleteModal .modal-footer button');
+    buttons.forEach(b => b.disabled = true);
+
+    // Show loading message
+    const messageDiv = document.getElementById('bulkDeleteMessage');
+    messageDiv.innerHTML = `
+        <div class="spinner-border spinner-border-sm me-2"></div>
+        Cancellazione in corso... (${displayCount} stelle)
+    `;
+    messageDiv.className = 'alert alert-info';
+
+    // API call
+    fetch('/agata/admin/api/stars-catalog/bulk-delete', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(requestBody)
+    })
+    .then(response => {
+        console.log('[BulkDelete] Response status:', response.status, 'ok:', response.ok);
+
+        // Check HTTP status and content-type BEFORE parsing JSON
+        if (!response.ok) {
+            return response.text().then(text => {
+                console.log('[BulkDelete] Error response text:', text.substring(0, 300));
+                // If response is HTML (error page), extract error message
+                if (text.includes('<html') || text.includes('<!DOCTYPE')) {
+                    throw new Error('Server returned HTML error page. Check server logs.');
+                }
+                // Try to parse as JSON error
+                try {
+                    const data = JSON.parse(text);
+                    throw new Error(data.error || 'Server error: ' + response.status);
+                } catch (e) {
+                    throw new Error('Server error ' + response.status + ': ' + text.substring(0, 100));
+                }
+            });
+        }
+        return response.json().then(data => {
+            console.log('[BulkDelete] Success response:', data);
+            return data;
+        });
+    })
+    .then(data => {
+        console.log('[BulkDelete] Evaluating response:', 'success=', data.success, 'deleted_count=', data.deleted_count);
+
+        if (data && data.success) {
+            let message = `<i class="bi bi-check-circle me-2"></i>✓ Cancellate ${data.deleted_count} stelle`;
+
+            if (data.failed_count > 0) {
+                message += `<br><small class="text-warning">${data.failed_count} stelle protette (assegnate/con progetti)</small>`;
+            }
+
+            messageDiv.innerHTML = message;
+            messageDiv.className = 'alert alert-success';
+            console.log('[BulkDelete] Success! Reloading page in 2 seconds...');
+
+            // Reload page after 2 seconds
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+        } else {
+            const errorMsg = (data && data.error) ? data.error : 'Errore sconosciuto';
+            messageDiv.innerHTML = `<i class="bi bi-exclamation-circle me-2"></i>✗ Errore: ${errorMsg}`;
+            messageDiv.className = 'alert alert-danger';
+            buttons.forEach(b => b.disabled = false);
+            console.log('[BulkDelete] Failure:', errorMsg);
+        }
+    })
+    .catch(error => {
+        messageDiv.innerHTML = `<i class="bi bi-exclamation-circle me-2"></i>✗ Errore: ${error.message}`;
+        messageDiv.className = 'alert alert-danger';
+        buttons.forEach(b => b.disabled = false);
+    });
+}
+
+function selfAssign(projectId, projectCode) {
+    if (!confirm(`Vuoi assegnarti il progetto ${projectCode}?`)) return;
+
+    fetch(`/agata/admin/api/projects/${projectId}/self-assign`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message || 'Progetto assegnato con successo');
+            location.reload();
+        } else {
+            alert('Errore: ' + data.error);
+        }
+    })
+    .catch(err => {
+        alert('Errore di rete: ' + err);
+    });
+}
+
+function createProject(gaiaId) {
+    if (!confirm(`Vuoi creare un progetto per la stella ${gaiaId}?\n\nIl progetto sarà disponibile per l'assegnazione agli analyst.`)) return;
+
+    fetch(`/agata/admin/api/stars-catalog/${gaiaId}/create-project`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message || 'Progetto creato con successo');
+            location.reload();
+        } else {
+            alert('Errore: ' + data.error);
+        }
+    })
+    .catch(err => {
+        alert('Errore di rete: ' + err);
+    });
+}
+
+function removeAssignment(assignmentId, gaiaId, event) {
+    event.stopPropagation();
+    if (!confirm(`Vuoi rimuovere l'assegnazione della stella ${gaiaId}?`)) return;
+
+    fetch(`/agata/admin/api/star-assignments/${assignmentId}`, {
+        method: 'DELETE',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message || 'Assegnazione rimossa con successo');
+            location.reload();
+        } else {
+            alert('Errore: ' + data.error);
+        }
+    })
+    .catch(err => {
+        alert('Errore di rete: ' + err);
+    });
+}
+
+// ============================================================================
+// CARICAMENTO GRAFICI PREVIEW
+// ============================================================================
+
+// Variabile di stato
+let chartsVisible = false;
+
+// Toggle mostra/nascondi grafici
+function toggleCharts() {
+    console.log('[toggleCharts] Toggle pressed');
+    const btn = document.getElementById('toggleChartsBtn');
+    const toolbar = document.getElementById('chartsToolbar');
+    const previewColumns = document.querySelectorAll('.preview-column');
+
+    chartsVisible = !chartsVisible;
+
+    if (chartsVisible) {
+        // Mostra grafici
+        btn.classList.remove('btn-outline-primary');
+        btn.classList.add('btn-primary');
+        btn.innerHTML = '<i class="bi bi-graph-up me-2"></i>Nascondi Anteprima Grafici';
+        toolbar.classList.remove('d-none');
+
+        previewColumns.forEach(col => col.classList.remove('d-none'));
+
+        // Carica tutti i grafici
+        const rows = document.querySelectorAll('tbody tr[data-gaia-id]');
+        rows.forEach(row => {
+            const gaiaId = row.getAttribute('data-gaia-id');
+            if (gaiaId) {
+                loadPreviewChart(gaiaId);
+            }
+        });
+    } else {
+        // Nascondi grafici
+        btn.classList.add('btn-outline-primary');
+        btn.classList.remove('btn-primary');
+        btn.innerHTML = '<i class="bi bi-graph-up me-2"></i>Mostra Anteprima Grafici';
+        toolbar.classList.add('d-none');
+
+        previewColumns.forEach(col => col.classList.add('d-none'));
+    }
+}
+
+// Aggiorna larghezza e altezza grafici quando cambia il parametro
+function updateChartDimensions() {
+    const width = document.getElementById('chartWidth')?.value || 300;
+    const previewCells = document.querySelectorAll('td.preview-column');
+
+    previewCells.forEach(cell => {
+        const plotDiv = cell.querySelector('[id^="plot-"]');
+        if (plotDiv) {
+            plotDiv.style.width = width + 'px';
+            // Trigger Plotly resize
+            const gaiaId = plotDiv.id.replace('plot-', '');
+            Plotly.Plots.resize(plotDiv);
+        }
+    });
+}
+
+// Funzione per caricare dati Arrow e renderizzare il grafico
+async function loadPreviewChart(gaiaId) {
+    console.log(`[loadPreviewChart] Inizio caricamento per ${gaiaId}`);
+    const plotDiv = document.getElementById(`plot-${gaiaId}`);
+
+    // Pulisci il contenitore prima di renderizzare
+    plotDiv.innerHTML = '';
+
+    const maxPoints = document.getElementById('previewMaxPoints').value || 300;
+
+    try {
+        // Carica dati Arrow dal server
+        const response = await fetch(`/agata/admin/api/stars-catalog/${gaiaId}/preview-data.arrow?max_points=${maxPoints}`);
+
+        if (!response.ok) {
+            plotDiv.innerHTML = '<small class="text-danger">Errore caricamento dati</small>';
+            return;
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+
+        // Carica Arrow se disponibile
+        if (typeof window.Arrow === 'undefined') {
+            plotDiv.innerHTML = '<small class="text-muted">Arrow non disponibile</small>';
+            return;
+        }
+
+        // Parse Arrow IPC stream
+        const table = window.Arrow.tableFromIPC(new Uint8Array(arrayBuffer));
+
+        // Estrai colonne
+        const hjdArray = table.getChild('hjd').toArray();
+        const magArray = table.getChild('mag').toArray();
+
+        if (hjdArray.length === 0) {
+            plotDiv.innerHTML = '<small class="text-muted">Nessun dato</small>';
+            return;
+        }
+
+        // Converti in array JavaScript
+        const hjd = Array.from(hjdArray);
+        const mag = Array.from(magArray);
+
+        // Normalizza magnitudine (inverta per mostrare magnitudini più luminose in basso)
+        const magMin = Math.min(...mag);
+        const magMax = Math.max(...mag);
+        const magNorm = mag.map(m => magMax - (m - magMin)); // Inverte per vedere stelle luminose in basso
+
+        // Crea trace Plotly
+        const trace = {
+            x: hjd,
+            y: mag,
+            mode: 'markers',
+            type: 'scatter',
+            marker: {
+                size: 4,
+                color: 'rgba(52, 152, 219, 0.6)',
+                opacity: 0.7
+            },
+            hovertemplate: '<b>JD:</b> %{x:.2f}<br><b>Mag:</b> %{y:.3f}<extra></extra>'
+        };
+
+        // Layout compatto
+        const layout = {
+            margin: { t: 5, b: 25, l: 35, r: 5 },
+            xaxis: {
+                title: { text: 'JD', font: { size: 10 } },
+                tickfont: { size: 9 },
+                showgrid: true,
+                gridwidth: 1,
+                gridcolor: '#e0e0e0'
+            },
+            yaxis: {
+                title: { text: 'Mag', font: { size: 10 } },
+                tickfont: { size: 9 },
+                showgrid: true,
+                gridwidth: 1,
+                gridcolor: '#e0e0e0',
+                autorange: 'reversed'  // Magnitudini: più basso = più luminoso
+            },
+            plot_bgcolor: 'rgba(255, 255, 255, 0.7)',
+            paper_bgcolor: 'white',
+            hovermode: 'closest',
+            dragmode: 'zoom'
+        };
+
+        const config = {
+            responsive: true,
+            displayModeBar: false,  // Nascondi toolbar Plotly per compattezza
+            staticPlot: false
+        };
+
+        // Renderizza con Plotly
+        if (typeof Plotly === 'undefined') {
+            plotDiv.innerHTML = '<small class="text-danger">Plotly non disponibile</small>';
+            return;
+        }
+        Plotly.newPlot(`plot-${gaiaId}`, [trace], layout, config);
+
+    } catch (error) {
+        plotDiv.innerHTML = `<small class="text-danger">Errore: ${error.message}</small>`;
+    }
+}
+
+
+// Ricarica grafici quando cambia il parametro max_points
+document.addEventListener('DOMContentLoaded', () => {
+    const maxPointsSelect = document.getElementById('previewMaxPoints');
+    const chartWidthSelect = document.getElementById('chartWidth');
+
+    if (maxPointsSelect) {
+        maxPointsSelect.addEventListener('change', () => {
+            const rows = document.querySelectorAll('tbody tr[data-gaia-id]');
+            rows.forEach(row => {
+                const gaiaId = row.getAttribute('data-gaia-id');
+                if (gaiaId) {
+                    const plotDiv = document.getElementById(`plot-${gaiaId}`);
+                    if (plotDiv) {
+                        plotDiv.innerHTML = '<div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #f5f5f5; border-radius: 4px;"><small class="text-muted">Caricamento...</small></div>';
+                        loadPreviewChart(gaiaId);
+                    }
+                }
+            });
+        });
+    }
+
+    // Listener per cambio larghezza grafici
+    if (chartWidthSelect) {
+        chartWidthSelect.addEventListener('change', () => {
+            updateChartDimensions();
+        });
+    }
+});
+</script>
+
+<!-- ============================================================
+     SAVED QUERIES — Modal salva query
+     ============================================================ -->
+<div class="modal fade" id="sqSaveModal" tabindex="-1" aria-labelledby="sqSaveModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="sqSaveModalLabel"><i class="bi bi-floppy me-2"></i>Salva query corrente</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Nome <span class="text-danger">*</span></label>
+                    <input type="text" id="sqSaveName" class="form-control" placeholder="Es. Stelle TESS non assegnate" maxlength="128">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Descrizione (opzionale)</label>
+                    <textarea id="sqSaveDesc" class="form-control" rows="2" maxlength="500"></textarea>
+                </div>
+                <div id="sqSaveError" class="alert alert-danger d-none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                <button type="button" class="btn btn-primary" onclick="sqSaveQuery()">
+                    <i class="bi bi-floppy me-1"></i>Salva
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal crea preset (solo superuser) -->
+{% if is_superuser %}
+<div class="modal fade" id="sqPresetModal" tabindex="-1" aria-labelledby="sqPresetModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="sqPresetModalLabel"><i class="bi bi-star me-2"></i>Crea preset</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="sqPresetEditId">
+                <div class="mb-3">
+                    <label class="form-label">Nome <span class="text-danger">*</span></label>
+                    <input type="text" id="sqPresetName" class="form-control" placeholder="Es. Candidati RR Lyrae" maxlength="128">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Descrizione (opzionale)</label>
+                    <textarea id="sqPresetDesc" class="form-control" rows="2" maxlength="500"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Visibilità</label>
+                    <select id="sqPresetAssoc" class="form-select">
+                        <option value="">Globale (tutti gli utenti)</option>
+                        {% for assoc in associations %}
+                        <option value="{{ assoc.id }}">{{ assoc.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Ordine nel menu</label>
+                    <input type="number" id="sqPresetOrder" class="form-control" value="0" min="0" max="999">
+                </div>
+                <div id="sqPresetUseCurrentFilters" class="text-muted small mb-2">
+                    <i class="bi bi-info-circle me-1"></i>Verranno salvati i filtri attualmente applicati.
+                </div>
+                <div id="sqPresetError" class="alert alert-danger d-none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                <button type="button" id="sqPresetSaveBtn" class="btn btn-warning" onclick="sqSavePreset()">
+                    <i class="bi bi-star me-1"></i>Crea preset
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+// ============================================================
+// SAVED QUERIES — Funzioni JS
+// ============================================================
+
+const SQ_CONTEXT = 'stars_catalog';
+const SQ_IS_SUPERUSER = {{ is_superuser | tojson }};
+
+/**
+ * Costruisce l'oggetto filter_params dai parametri URL correnti.
+ */
+function sqCurrentParams() {
+    const params = {};
+    const url = new URL(window.location.href);
+    for (const [k, v] of url.searchParams.entries()) {
+        if (k !== 'page') params[k] = v;
+    }
+    return params;
+}
+
+/**
+ * Applica un set di filter_params navigando alla URL corrispondente.
+ */
+function sqApplyParams(filterParams) {
+    const url = new URL(window.location.href);
+    for (const k of [...url.searchParams.keys()]) {
+        url.searchParams.delete(k);
+    }
+    for (const [k, v] of Object.entries(filterParams)) {
+        if (v !== '' && v !== null && v !== undefined) {
+            url.searchParams.set(k, v);
+        }
+    }
+    url.searchParams.delete('page');
+    window.location.href = url.toString();
+}
+
+/** Carica le query salvate nel dropdown. Chiamata ogni volta che si apre. */
+async function sqLoadDropdown() {
+    const list = document.getElementById('sqList');
+    const divider = document.getElementById('sqDivider');
+    const emptyMsg = document.getElementById('sqEmptyMsg');
+    list.innerHTML = '<li class="dropdown-item text-muted small px-3"><span class="spinner-border spinner-border-sm me-1"></span>Caricamento...</li>';
+    divider.style.display = 'none';
+    emptyMsg.classList.add('d-none');
+    try {
+        const resp = await fetch(`/agata/admin/api/saved-queries?context=${SQ_CONTEXT}`);
+        const queries = await resp.json();
+        list.innerHTML = '';
+        if (queries.length === 0) {
+            emptyMsg.classList.remove('d-none');
+            return;
+        }
+        divider.style.display = '';
+        list.innerHTML = queries.map(q => `
+            <li class="d-flex align-items-center px-2 py-1">
+                <a class="dropdown-item sq-apply-btn flex-grow-1 py-0 text-truncate" href="#"
+                   title="${escHtml(q.description || q.name)}"
+                   data-params="${escHtml(JSON.stringify(q.filter_params))}">
+                    <i class="bi bi-bookmark-fill me-2 text-primary" style="font-size:.75rem"></i>${escHtml(q.name)}
+                </a>
+                <button class="btn btn-link btn-sm p-0 text-danger ms-1 sq-delete-btn" title="Elimina"
+                        data-id="${q.id}">
+                    <i class="bi bi-trash3" style="font-size:.75rem"></i>
+                </button>
+            </li>
+        `).join('');
+    } catch (e) {
+        list.innerHTML = '<li class="dropdown-item text-danger small px-3">Errore caricamento</li>';
+    }
+}
+
+// Carica al momento dell'apertura del dropdown (evento Bootstrap)
+// e gestisce click delegati su voci dinamiche
+document.addEventListener('DOMContentLoaded', () => {
+    const sqWrap = document.getElementById('savedQueriesDropdownWrap');
+    if (sqWrap) {
+        sqWrap.addEventListener('show.bs.dropdown', sqLoadDropdown);
+    }
+    const presetsWrap = document.getElementById('presetsDropdownWrap');
+    if (presetsWrap) {
+        presetsWrap.addEventListener('show.bs.dropdown', sqLoadPresets);
+    }
+
+    // Click delegato: applica query/preset
+    document.addEventListener('click', (e) => {
+        const applyBtn = e.target.closest('.sq-apply-btn');
+        if (applyBtn) {
+            e.preventDefault();
+            try {
+                sqApplyParams(JSON.parse(applyBtn.dataset.params));
+            } catch (err) {
+                console.error('sqApplyParams parse error', err, applyBtn.dataset.params);
+            }
+            return;
+        }
+        const deleteBtn = e.target.closest('.sq-delete-btn');
+        if (deleteBtn) {
+            e.preventDefault();
+            sqDeleteQuery(parseInt(deleteBtn.dataset.id));
+            return;
+        }
+        const presetEditBtn = e.target.closest('.sq-preset-edit-btn');
+        if (presetEditBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            sqOpenEditPresetModal(presetEditBtn.dataset);
+            return;
+        }
+        const presetDeleteBtn = e.target.closest('.sq-preset-delete-btn');
+        if (presetDeleteBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            sqDeletePreset(parseInt(presetDeleteBtn.dataset.id));
+        }
+    });
+});
+
+/** Apre il modal per salvare i filtri correnti. */
+function sqOpenSaveModal() {
+    document.getElementById('sqSaveName').value = '';
+    document.getElementById('sqSaveDesc').value = '';
+    document.getElementById('sqSaveError').classList.add('d-none');
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('sqSaveModal')).show();
+}
+
+/** Salva la query corrente via API. */
+async function sqSaveQuery() {
+    const name = document.getElementById('sqSaveName').value.trim();
+    const errEl = document.getElementById('sqSaveError');
+    if (!name) {
+        errEl.textContent = 'Il nome è obbligatorio.';
+        errEl.classList.remove('d-none');
+        return;
+    }
+    try {
+        const resp = await fetch('/agata/admin/api/saved-queries', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                context: SQ_CONTEXT,
+                name,
+                description: document.getElementById('sqSaveDesc').value.trim() || null,
+                filter_params: sqCurrentParams(),
+            })
+        });
+        if (!resp.ok) {
+            const d = await resp.json();
+            errEl.textContent = d.error || 'Errore salvataggio.';
+            errEl.classList.remove('d-none');
+            return;
+        }
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('sqSaveModal')).hide();
+        showToast('Query salvata', 'success');
+    } catch (e) {
+        errEl.textContent = 'Errore di rete.';
+        errEl.classList.remove('d-none');
+    }
+}
+
+/** Elimina una query salvata. */
+async function sqDeleteQuery(id) {
+    if (!confirm('Eliminare questa query salvata?')) return;
+    try {
+        const resp = await fetch(`/agata/admin/api/saved-queries/${id}`, {method: 'DELETE'});
+        if (resp.ok) {
+            showToast('Query eliminata', 'info');
+            await sqLoadDropdown();
+        }
+    } catch (e) {}
+}
+
+/** Carica i preset nel dropdown. Chiamata ogni volta che si apre. */
+async function sqLoadPresets() {
+    const list = document.getElementById('presetsList');
+    const emptyMsg = document.getElementById('presetsEmptyMsg');
+    list.innerHTML = '<li class="dropdown-item text-muted small px-3"><span class="spinner-border spinner-border-sm me-1"></span>Caricamento...</li>';
+    emptyMsg.style.display = 'none';
+    try {
+        const resp = await fetch(`/agata/admin/api/query-presets?context=${SQ_CONTEXT}`);
+        const presets = await resp.json();
+        if (presets.length === 0) {
+            list.innerHTML = '';
+            emptyMsg.textContent = 'Nessun preset disponibile';
+            emptyMsg.style.display = '';
+            return;
+        }
+        list.innerHTML = presets.map(p => `
+            <li class="d-flex align-items-center px-2 py-1">
+                <a class="dropdown-item sq-apply-btn flex-grow-1 py-0 text-truncate" href="#"
+                   title="${escHtml(p.description || p.name)}"
+                   data-params="${escHtml(JSON.stringify(p.filter_params))}">
+                    <i class="bi bi-star-fill me-2 text-warning" style="font-size:.75rem"></i>${escHtml(p.name)}
+                    ${p.association_id ? '<span class="badge bg-light text-dark ms-1" style="font-size:.65rem">assoc.</span>' : ''}
+                </a>
+                ${SQ_IS_SUPERUSER ? `
+                <button class="btn btn-link btn-sm p-0 ms-1 sq-preset-edit-btn text-secondary" title="Modifica"
+                        data-id="${p.id}" data-name="${escHtml(p.name)}"
+                        data-desc="${escHtml(p.description || '')}"
+                        data-assoc="${p.association_id || ''}" data-order="${p.sort_order}">
+                    <i class="bi bi-pencil" style="font-size:.75rem"></i>
+                </button>
+                <button class="btn btn-link btn-sm p-0 ms-1 sq-preset-delete-btn text-danger" title="Elimina"
+                        data-id="${p.id}">
+                    <i class="bi bi-trash" style="font-size:.75rem"></i>
+                </button>` : ''}
+            </li>
+        `).join('');
+    } catch (e) {
+        list.innerHTML = '<li class="dropdown-item text-danger small px-3">Errore caricamento</li>';
+    }
+}
+
+{% if is_superuser %}
+/** Apre il modal per creare un nuovo preset (solo superuser). */
+function sqOpenPresetModal() {
+    document.getElementById('sqPresetEditId').value = '';
+    document.getElementById('sqPresetName').value = '';
+    document.getElementById('sqPresetDesc').value = '';
+    document.getElementById('sqPresetAssoc').value = '';
+    document.getElementById('sqPresetOrder').value = '0';
+    document.getElementById('sqPresetError').classList.add('d-none');
+    document.getElementById('sqPresetModalLabel').innerHTML = '<i class="bi bi-star me-2"></i>Crea preset';
+    document.getElementById('sqPresetSaveBtn').innerHTML = '<i class="bi bi-star me-1"></i>Crea preset';
+    document.getElementById('sqPresetUseCurrentFilters').style.display = '';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('sqPresetModal')).show();
+}
+
+/** Apre il modal di modifica per un preset esistente (solo superuser). */
+function sqOpenEditPresetModal(data) {
+    document.getElementById('sqPresetEditId').value = data.id;
+    document.getElementById('sqPresetName').value = data.name || '';
+    document.getElementById('sqPresetDesc').value = data.desc || '';
+    document.getElementById('sqPresetAssoc').value = data.assoc || '';
+    document.getElementById('sqPresetOrder').value = data.order || '0';
+    document.getElementById('sqPresetError').classList.add('d-none');
+    document.getElementById('sqPresetModalLabel').innerHTML = '<i class="bi bi-pencil me-2"></i>Modifica preset';
+    document.getElementById('sqPresetSaveBtn').innerHTML = '<i class="bi bi-check-lg me-1"></i>Salva modifiche';
+    document.getElementById('sqPresetUseCurrentFilters').style.display = 'none';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('sqPresetModal')).show();
+}
+
+/** Salva o aggiorna il preset via API (solo superuser). */
+async function sqSavePreset() {
+    const name = document.getElementById('sqPresetName').value.trim();
+    const errEl = document.getElementById('sqPresetError');
+    if (!name) {
+        errEl.textContent = 'Il nome è obbligatorio.';
+        errEl.classList.remove('d-none');
+        return;
+    }
+    const editId = document.getElementById('sqPresetEditId').value;
+    const assocVal = document.getElementById('sqPresetAssoc').value;
+    const body = {
+        name,
+        description: document.getElementById('sqPresetDesc').value.trim() || null,
+        association_id: assocVal ? parseInt(assocVal) : null,
+        sort_order: parseInt(document.getElementById('sqPresetOrder').value) || 0,
+    };
+    let url, method;
+    if (editId) {
+        url = `/agata/admin/api/query-presets/${editId}`;
+        method = 'PUT';
+    } else {
+        url = '/agata/admin/api/query-presets';
+        method = 'POST';
+        body.context = SQ_CONTEXT;
+        body.filter_params = sqCurrentParams();
+    }
+    try {
+        const resp = await fetch(url, {
+            method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body),
+        });
+        if (!resp.ok) {
+            const d = await resp.json();
+            errEl.textContent = d.error || 'Errore salvataggio.';
+            errEl.classList.remove('d-none');
+            return;
+        }
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('sqPresetModal')).hide();
+        showToast(editId ? 'Preset aggiornato' : 'Preset creato', 'success');
+    } catch (e) {
+        errEl.textContent = 'Errore di rete.';
+        errEl.classList.remove('d-none');
+    }
+}
+
+/** Elimina un preset (solo superuser). */
+async function sqDeletePreset(id) {
+    if (!confirm('Eliminare questo preset?')) return;
+    try {
+        const resp = await fetch(`/agata/admin/api/query-presets/${id}`, {method: 'DELETE'});
+        if (!resp.ok) {
+            const d = await resp.json();
+            showToast(d.error || 'Errore eliminazione', 'danger');
+            return;
+        }
+        showToast('Preset eliminato', 'success');
+        sqLoadPresets();
+    } catch (e) {
+        showToast('Errore di rete', 'danger');
+    }
+}
+{% endif %}
+
+/** Utility: escapa HTML per inserimento sicuro in attributi/testo. */
+function escHtml(str) {
+    return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/** Utility: toast generico (riusa il meccanismo Bootstrap esistente se presente). */
+function showToast(msg, type = 'success') {
+    const el = document.createElement('div');
+    el.className = `toast align-items-center text-bg-${type} border-0 position-fixed bottom-0 end-0 m-3`;
+    el.style.zIndex = 9999;
+    el.setAttribute('role', 'alert');
+    el.innerHTML = `<div class="d-flex"><div class="toast-body">${escHtml(msg)}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+    document.body.appendChild(el);
+    const t = new bootstrap.Toast(el, {delay: 2500});
+    t.show();
+    el.addEventListener('hidden.bs.toast', () => el.remove());
+}
+</script>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('admin.static', filename='vendor/plotly/plotly-2.30.0.min.js') }}"></script>
+{% endblock %}

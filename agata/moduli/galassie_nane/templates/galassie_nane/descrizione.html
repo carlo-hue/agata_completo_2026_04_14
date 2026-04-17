@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AGATA - Galassie Nane - Descrizione</title>
+    <link rel="stylesheet" href="{{ url_for('galassie_nane.static', filename='css/common.css') }}">
+    <link rel="stylesheet" href="{{ url_for('galassie_nane.static', filename='css/galassie_nane.css') }}">
+    <link rel="stylesheet" href="{{ url_for('galassie_nane.static', filename='vendor/bootstrap-icons-1.11.0/font/bootstrap-icons.css') }}">
+</head>
+<body>
+    <aside class="module-sidebar">
+        <div class="module-sidebar-title">Moduli Principali</div>
+        <nav class="module-nav">
+            <a href="{{ url_for('admin.list_projects') }}" class="module-nav-link"><i class="bi bi-wrench"></i>Admin</a>
+            <a href="{{ url_for('variable_stars.index') }}" class="module-nav-link"><i class="bi bi-graph-up"></i>Editor Stelle</a>
+            <a href="{{ url_for('exoplanets.index') }}" class="module-nav-link"><i class="bi bi-globe"></i>Esopianeti</a>
+            <a href="{{ url_for('mappe_stelle.index') }}" class="module-nav-link"><i class="bi bi-bullseye"></i>Field Star Map</a>
+            <a href="{{ url_for('galassie_nane.index') }}" class="module-nav-link active"><i class="bi bi-stars"></i>Galassie Nane</a>
+        </nav>
+    </aside>
+    <div class="app-shell">
+        <header>
+            <h1>AGATA - Galassie Nane: Descrizione</h1>
+            <nav>
+                <a href="{{ url_for('galassie_nane.index') }}">Torna all'analisi</a>
+            </nav>
+        </header>
+        <main>
+            <section class="panel">
+                <h2>Scopo della pagina</h2>
+                <p>Questa schermata serve per testare la pipeline scientifica del modulo con dati mock, mantenendo già stabile l'interfaccia e il contratto API.</p>
+            </section>
+            <section class="panel">
+                <h2>Parametri input</h2>
+                <p><strong>RA / Dec</strong>: centro del campo (coordinate equatoriali in gradi).</p>
+                <p><strong>Radius</strong>: raggio del cono di ricerca in gradi.</p>
+                <p><strong>G max</strong>: limite di magnitudine Gaia G.</p>
+                <p><strong>RUWE max</strong>: soglia qualità astrometrica.</p>
+                <p><strong>Cell [arcmin]</strong>: dimensione celle per la mappa di densità.</p>
+                <p><strong>Filtro extragal</strong>: quando attivo, simula la selezione di sorgenti compatibili con scenario extragalattico.</p>
+            </section>
+            <section class="panel">
+                <h2>Risultati mostrati</h2>
+                <p><strong>KPI</strong>: numero sorgenti, massimo Z, score composito tile e provider dati (mock/reale).</p>
+                <p><strong>Densità</strong>: conteggi per cella della griglia.</p>
+                <p><strong>Z-map</strong>: significatività locale rispetto al fondo medio del campo.</p>
+                <p><strong>Preview sorgenti</strong>: prime 10 righe del campione restituito, utile per debug rapido.</p>
+            </section>
+            <section class="panel">
+                <h2>Nota tecnica</h2>
+                <p>Tutte le future chiamate reali a Gaia passeranno da un solo file: <code>galassie_nane/services/gaia_client.py</code>.</p>
+            </section>
+        </main>
+    </div>
+</body>
+</html>
+

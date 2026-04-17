@@ -1,0 +1,299 @@
+{% extends "admin/base.html" %}
+{% from 'macros.html' import help_button %}
+
+{% block title %}ZTF Field Survey Pipeline{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1><i class="fas fa-star"></i> ZTF Field Survey Pipeline {{ help_button('admin.ztf_survey') }}</h1>
+            <p class="text-muted mb-0">Survey fotometrico automatizzato su area di cielo con dati ZTF/IRSA</p>
+        </div>
+        <button class="btn btn-primary btn-lg" data-bs-toggle="modal" data-bs-target="#createJobModal">
+            <i class="fas fa-plus"></i> Nuovo Survey
+        </button>
+    </div>
+
+    <!-- Job List Card -->
+    <div class="card">
+        <div class="card-header bg-light">
+            <div class="row align-items-center">
+                <div class="col">
+                    <h5 class="mb-0"><i class="fas fa-list"></i> Survey Jobs</h5>
+                </div>
+                <div class="col-auto">
+                    <span class="badge bg-secondary">{{ jobs|length }} job</span>
+                </div>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            {% if jobs %}
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr class="table-light">
+                        <th style="width: 15%">Job Code</th>
+                        <th style="width: 18%">Nome Campo</th>
+                        <th style="width: 20%">Area (RA/Dec/Raggio)</th>
+                        <th style="width: 10%">Stato</th>
+                        <th style="width: 12%">Progresso</th>
+                        <th style="width: 12%">Sorgenti / Candidati</th>
+                        <th style="width: 8%">Creato</th>
+                        <th style="width: 5%">Azioni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for job in jobs %}
+                    <tr class="{% if job.state == 'failed' %}table-danger{% elif job.state == 'completed' %}{% endif %}">
+                        <td>
+                            <a href="{{ url_for('admin.ztf_survey_job_detail', job_id=job.id) }}" class="font-monospace">
+                                <strong>{{ job.job_code }}</strong>
+                            </a>
+                        </td>
+                        <td>{{ job.target_name }}</td>
+                        <td class="small text-muted">
+                            RA={{ "%.3f"|format(job.ra_center) }}
+                            Dec={{ "%.3f"|format(job.dec_center) }}
+                            r={{ job.radius_deg }}°
+                            <span class="badge bg-light text-dark border">ZTF{{ job.ztf_filter }}</span>
+                        </td>
+                        <td>
+                            <span class="badge bg-{{
+                                'success' if job.state == 'completed'
+                                else 'danger' if job.state == 'failed'
+                                else 'warning text-dark' if job.state in ['downloading', 'analyzing']
+                                else 'info' if job.state == 'crossmatching'
+                                else 'secondary' if job.state == 'cancelled'
+                                else 'light text-dark border'
+                            }}">
+                                {% if job.is_running %}<i class="fas fa-spinner fa-spin me-1"></i>{% endif %}
+                                {{ job.state | title }}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar {{ 'bg-danger' if job.state == 'failed' else 'bg-success' if job.state == 'completed' else '' }}"
+                                     role="progressbar"
+                                     style="width: {{ job.progress_pct }}%"
+                                     aria-valuenow="{{ job.progress_pct }}"
+                                     aria-valuemin="0" aria-valuemax="100">
+                                    <small>{{ job.progress_pct }}%</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="text-center">
+                            <span class="badge bg-secondary me-1" title="Sorgenti totali">{{ job.total_sources }}</span>
+                            <i class="fas fa-arrow-right text-muted small"></i>
+                            <span class="badge bg-warning text-dark ms-1" title="Candidati variabili">{{ job.candidates_found }}</span>
+                        </td>
+                        <td class="small text-muted">{{ job.created_at.strftime('%d/%m %H:%M') }}</td>
+                        <td>
+                            <a href="{{ url_for('admin.ztf_survey_job_detail', job_id=job.id) }}"
+                               class="btn btn-sm btn-outline-primary" title="Dettaglio">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="alert alert-info m-4 mb-0">
+                <i class="fas fa-info-circle"></i>
+                Nessun survey avviato. Clicca <strong>Nuovo Survey</strong> per iniziare.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Create Job Modal -->
+<div class="modal fade" id="createJobModal" tabindex="-1" aria-labelledby="createJobModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="createJobModalLabel">
+                    <i class="fas fa-plus-circle"></i> Nuovo ZTF Field Survey
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+            </div>
+            <form id="ztf-survey-form">
+                <div class="modal-body">
+                    <div class="alert alert-info small mb-3">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Il survey interroga il catalogo ZTF DR24 su IRSA per ottenere oggetti con
+                        indici di variabilità precalcolati (chi², σ, MAD) e identifica candidati variabili.
+                        <br>
+                        <strong>Nota:</strong> ZTF copre solo Dec &gt; -30°. Raggio fino a 2°.
+                    </div>
+
+                    <!-- Nome campo -->
+                    <div class="mb-3">
+                        <label for="targetName" class="form-label">
+                            Nome campo <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="targetName" name="target_name"
+                               placeholder="es. Campo Orione, M42-Field, Custom_2026"
+                               required>
+                        <small class="form-text text-muted">Nome descrittivo del campo</small>
+                    </div>
+
+                    <!-- Coordinate -->
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label for="raCenter" class="form-label">RA (gradi) <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="raCenter" name="ra_center"
+                                   step="0.0001" min="0" max="360" placeholder="83.8221"
+                                   required>
+                            <small class="form-text text-muted">0 - 360°</small>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="decCenter" class="form-label">Dec (gradi) <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="decCenter" name="dec_center"
+                                   step="0.0001" min="-30" max="90" placeholder="-5.3911"
+                                   required>
+                            <small class="form-text text-muted">&gt; -30° (copertura ZTF)</small>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="radiusDeg" class="form-label">Raggio (gradi) <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="radiusDeg" name="radius_deg"
+                                   step="0.001" min="0.001" max="2.0" placeholder="0.05"
+                                   required>
+                            <small class="form-text text-muted">0.001 - 2.0°</small>
+                        </div>
+                    </div>
+
+                    <!-- Filtro ZTF e min osservazioni -->
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label for="ztfFilter" class="form-label">Filtro ZTF</label>
+                            <select class="form-select" id="ztfFilter" name="ztf_filter">
+                                <option value="r" selected>r (rosso)</option>
+                                <option value="g">g (verde)</option>
+                                <option value="i">i (infrarosso)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="minObs" class="form-label">Min. osservazioni</label>
+                            <input type="number" class="form-control" id="minObs" name="min_observations"
+                                   min="5" max="500" value="20">
+                            <small class="form-text text-muted">Punti minimi per sorgente</small>
+                        </div>
+                    </div>
+
+                    <!-- Range magnitudine (opzionale) -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="magMin" class="form-label">Mag min (brillante, opzionale)</label>
+                            <input type="number" class="form-control" id="magMin" name="mag_min"
+                                   step="0.1" min="10" max="20" placeholder="es. 12.0">
+                            <small class="form-text text-muted">Esclude stelle troppo brillanti</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="magMax" class="form-label">Mag max (debole, opzionale)</label>
+                            <input type="number" class="form-control" id="magMax" name="mag_max"
+                                   step="0.1" min="10" max="22" placeholder="es. 19.5">
+                            <small class="form-text text-muted">Esclude stelle troppo deboli</small>
+                        </div>
+                    </div>
+
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                    <button type="submit" class="btn btn-primary" id="submit-survey-btn">
+                        <i class="fas fa-rocket"></i> Avvia Survey
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('ztf-survey-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const form = e.target;
+    const formData = new FormData(form);
+
+    const data = {
+        target_name: formData.get('target_name'),
+        ra_center: parseFloat(formData.get('ra_center')),
+        dec_center: parseFloat(formData.get('dec_center')),
+        radius_deg: parseFloat(formData.get('radius_deg')),
+        ztf_filter: formData.get('ztf_filter'),
+        min_observations: parseInt(formData.get('min_observations')),
+    };
+
+    // Opzionali
+    const magMin = formData.get('mag_min');
+    const magMax = formData.get('mag_max');
+    if (magMin) data.mag_min = parseFloat(magMin);
+    if (magMax) data.mag_max = parseFloat(magMax);
+
+    // Validazioni client-side
+    if (!data.target_name || !data.target_name.trim()) {
+        alert('Inserisci un nome per il campo');
+        return;
+    }
+    if (isNaN(data.ra_center) || data.ra_center < 0 || data.ra_center > 360) {
+        alert('RA non valida (0-360 gradi)');
+        return;
+    }
+    if (isNaN(data.dec_center) || data.dec_center < -30 || data.dec_center > 90) {
+        alert('Dec non valida. ZTF copre solo Dec > -30 gradi.');
+        return;
+    }
+    if (isNaN(data.radius_deg) || data.radius_deg < 0.001 || data.radius_deg > 2.0) {
+        alert('Raggio non valido (0.001 - 2.0 gradi)');
+        return;
+    }
+
+    const btn = document.getElementById('submit-survey-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creazione in corso...';
+
+    try {
+        const response = await fetch('/agata/admin/api/ztf-survey/jobs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        const result = await response.json();
+
+        if (result.success) {
+            bootstrap.Modal.getInstance(document.getElementById('createJobModal')).hide();
+            form.reset();
+
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+            alert.style.zIndex = '9999';
+            alert.innerHTML = `
+                <i class="fas fa-check-circle"></i>
+                <strong>Survey avviato!</strong> Job <code>${result.job_code}</code> in esecuzione.
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alert);
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            alert('Errore: ' + result.error);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-rocket"></i> Avvia Survey';
+        }
+    } catch (error) {
+        alert('Errore di rete: ' + error);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-rocket"></i> Avvia Survey';
+    }
+});
+
+// Auto-refresh se ci sono job in corso
+(function() {
+    const hasRunning = document.querySelectorAll('.fa-spinner').length > 0;
+    if (hasRunning) {
+        setTimeout(() => location.reload(), 5000);
+    }
+})();
+</script>
+{% endblock %}

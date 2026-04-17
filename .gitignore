@@ -1,0 +1,263 @@
+# =============================================================================
+# AAAAT - .gitignore
+# =============================================================================
+# File e directory da NON committare su git
+
+# =============================================================================
+# SICUREZZA - CREDENZIALI
+# =============================================================================
+# MAI committare file con credenziali!
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+secrets/
+credentials/
+
+# =============================================================================
+# PYTHON
+# =============================================================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath
+*.sage.py
+
+# Spyder
+.spyderproject
+.spyproject
+
+# Rope
+.ropeproject
+
+# mkdocs
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre
+.pyre/
+
+# pytype
+.pytype/
+
+# =============================================================================
+# FLASK
+# =============================================================================
+instance/
+.webassets-cache
+flask/
+
+# Flask session files
+flask_session/
+
+# =============================================================================
+# DATABASE
+# =============================================================================
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# Database dumps
+*.sql
+*.dump
+
+# =============================================================================
+# LOGS
+# =============================================================================
+*.log
+logs/
+*.log.*
+
+# =============================================================================
+# IDE / EDITORS
+# =============================================================================
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+.*.sw[a-z]
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# =============================================================================
+# OS
+# =============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# =============================================================================
+# TEMPORARY FILES
+# =============================================================================
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*~
+
+# =============================================================================
+# PROJECT SPECIFIC
+# =============================================================================
+
+# Upload directory (se gestisci file upload)
+uploads/
+
+# Output files generati
+outputs/
+exports/
+
+# Cache Arrow/Parquet
+*.arrow
+*.parquet
+
+# Documenti temporanei analisi
+analysis_*.html
+report_*.pdf
+
+# Old test files (moved to tests/old/)
+test_*.py
+*_test.py
+tests/old/
+
+# Old documentation (moved to docs/*/old/)
+docs/*/old/
+
+# file di appoggio
+data/
+
+# =============================================================================
+# DOCUMENTATION BUILD
+# =============================================================================
+docs/_build/
+docs/_static/
+docs/_templates/
+
+# =============================================================================
+# DEPLOYMENT
+# =============================================================================
+.deploy/
+docker-compose.override.yml
+
+# =============================================================================
+# SECURITY SCANNING
+# =============================================================================
+.bandit
+.safety
+# Knowledge Base data (not in version control)
+kb_data/
+*.mbox
+
+# WSGI configuration files (development/test only)
+*.wsgi
+astrogen.wsgi
+
+# =============================================================================
+# TPF MODULE - Local development artifacts
+# =============================================================================
+agata/moduli/tpf/run.py
+agata/moduli/tpf/TEST_LOCALE.md
+agata/moduli/tpf/Dati_di_Prova/
+
+# Help content - modificato direttamente in produzione via UI, non versionato
+agata/help/content/
+.hf_cache/

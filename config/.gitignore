@@ -1,0 +1,7 @@
+# Google OAuth credentials (never commit)
+google_client_secret.json
+
+# Other sensitive configs
+*.secret
+*.key
+*.pem

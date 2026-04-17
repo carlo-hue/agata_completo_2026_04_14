@@ -1,0 +1,19 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Errore{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row justify-content-center mt-5">
+        <div class="col-md-8">
+            <div class="alert alert-danger" role="alert">
+                <h4 class="alert-heading"><i class="fas fa-exclamation-triangle"></i> Errore</h4>
+                <p class="mb-0">{{ error_message or error or 'Si è verificato un errore durante l\'elaborazione della richiesta.' }}</p>
+            </div>
+            <a href="{{ url_for('admin.dashboard') }}" class="btn btn-primary">
+                <i class="fas fa-home"></i> Torna alla Dashboard
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

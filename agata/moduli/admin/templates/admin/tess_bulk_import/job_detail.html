@@ -1,0 +1,862 @@
+{% extends "admin/base.html" %}
+{% from 'macros.html' import help_button %}
+
+{% block title %}TESS Import {{ job.job_code }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+    <!-- Breadcrumb -->
+    <div class="mb-3">
+        <a href="{{ url_for('admin.tess_bulk_import_jobs_page') }}" class="btn btn-sm btn-outline-secondary">
+            <i class="fas fa-arrow-left"></i> Torna alla lista
+        </a>
+    </div>
+
+    <!-- Header -->
+    <div class="row mb-4 align-items-center">
+        <div class="col">
+            <h1><i class="fas fa-satellite"></i> {{ job.job_code }} {{ help_button('admin.tess_bulk_import') }}</h1>
+            <p class="text-muted mb-0"><strong>Job:</strong> {{ job.job_name }}</p>
+        </div>
+        <div class="col-auto d-flex gap-2 align-items-center">
+            <span class="badge fs-6 bg-{{
+                'success' if job.state == 'completed'
+                else 'danger' if job.state == 'failed'
+                else 'warning text-dark' if job.is_running
+                else 'secondary'
+            }}">
+                {% if job.is_running %}<i class="fas fa-spinner fa-spin me-1"></i>{% endif %}
+                {{ job.state | title }}
+            </span>
+            {% if job.state in ['failed', 'downloading', 'analyzing', 'crossmatching'] and not job.is_running %}
+            <button class="btn btn-sm btn-outline-warning" onclick="resumeJob({{ job.id }}, '{{ job.job_code }}')" title="Riprendi job (salta file già elaborati)">
+                <i class="fas fa-redo"></i> Riprendi
+            </button>
+            {% endif %}
+            {% if not job.is_running %}
+            <button class="btn btn-sm btn-outline-danger" onclick="deleteJob({{ job.id }})" title="Elimina job e tutti i dati relativi">
+                <i class="fas fa-trash"></i> Elimina
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Info cards -->
+    <div class="row mb-4">
+
+        <!-- Card: Stato e Progresso -->
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-tasks"></i> Stato e Progresso</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-1">
+                            <strong>Progresso totale</strong>
+                            <span class="badge bg-primary">{{ job.progress_pct }}%</span>
+                        </div>
+                        <div class="progress" style="height: 24px;">
+                            <div id="progressBar"
+                                 class="progress-bar {{ 'bg-danger' if job.state == 'failed' else 'bg-success' if job.state == 'completed' else '' }}"
+                                 role="progressbar"
+                                 style="width: {{ job.progress_pct }}%"
+                                 aria-valuenow="{{ job.progress_pct }}" aria-valuemin="0" aria-valuemax="100">
+                                {{ job.progress_pct }}%
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if job.current_step %}
+                    <div class="alert alert-info py-2 small mb-3" id="currentStep">
+                        <i class="fas fa-info-circle"></i> {{ job.current_step }}
+                    </div>
+                    {% endif %}
+
+                    {% if job.error_message %}
+                    <div class="alert alert-danger py-2 small mb-3">
+                        <i class="fas fa-exclamation-triangle"></i> <strong>Errore:</strong> {{ job.error_message }}
+                    </div>
+                    {% endif %}
+
+                    <dl class="row mb-0 small">
+                        <dt class="col-sm-5">Creato da</dt>
+                        <dd class="col-sm-7">{{ job.creator.email if job.creator else '—' }}</dd>
+                        <dt class="col-sm-5">Creato</dt>
+                        <dd class="col-sm-7">{{ job.created_at.strftime('%d/%m/%Y %H:%M') }}</dd>
+                        {% if job.started_at %}
+                        <dt class="col-sm-5">Avviato</dt>
+                        <dd class="col-sm-7">{{ job.started_at.strftime('%d/%m/%Y %H:%M') }}</dd>
+                        {% endif %}
+                        {% if job.completed_at %}
+                        <dt class="col-sm-5">Completato</dt>
+                        <dd class="col-sm-7">{{ job.completed_at.strftime('%d/%m/%Y %H:%M') }}</dd>
+                        {% endif %}
+                        {% if job.duration_seconds %}
+                        <dt class="col-sm-5">Durata</dt>
+                        <dd class="col-sm-7">{{ "%.0f"|format(job.duration_seconds) }}s</dd>
+                        {% endif %}
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card: Parametri + Statistiche -->
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-sliders-h"></i> Parametri Import</h5>
+                </div>
+                <div class="card-body">
+                    <dl class="row mb-2 small">
+                        <dt class="col-sm-5">Script MAST</dt>
+                        <dd class="col-sm-7 text-truncate" title="{{ job.curl_script_filename }}">{{ job.curl_script_filename or '—' }}</dd>
+                        <dt class="col-sm-5">File totali script</dt>
+                        <dd class="col-sm-7">{{ job.total_files_in_script }}</dd>
+                        <dt class="col-sm-5">File selezionati</dt>
+                        <dd class="col-sm-7"><span class="badge bg-primary">{{ job.files_selected }}</span> ({{ job.selection_strategy }})</dd>
+                        <dt class="col-sm-5">Min. osservazioni</dt>
+                        <dd class="col-sm-7">{{ job.min_observations }} punti</dd>
+                        <dt class="col-sm-5">Soglia Stetson J</dt>
+                        <dd class="col-sm-7">&gt; {{ job.stetson_j_threshold }}</dd>
+                        <dt class="col-sm-5">Soglia χ²</dt>
+                        <dd class="col-sm-7">&gt; {{ job.chi2_threshold }}</dd>
+                    </dl>
+
+                    <hr class="my-2">
+                    <!-- Statistiche risultati -->
+                    <div class="row text-center">
+                        <div class="col">
+                            <div class="fs-5 fw-bold">{{ job.total_processed }}</div>
+                            <small class="text-muted">Elaborati</small>
+                        </div>
+                        <div class="col">
+                            <div class="fs-5 fw-bold text-danger">{{ job.total_failed_downloads }}</div>
+                            <small class="text-muted">Download falliti</small>
+                        </div>
+                        <div class="col">
+                            <div class="fs-5 fw-bold text-warning">{{ job.candidates_found }}</div>
+                            <small class="text-muted">Candidati</small>
+                        </div>
+                        <div class="col">
+                            <div class="fs-5 fw-bold text-info">{{ job.known_variables_found }}</div>
+                            <small class="text-muted">Var. note</small>
+                        </div>
+                        <div class="col">
+                            <div class="fs-5 fw-bold text-success">{{ job.promoted_count }}</div>
+                            <small class="text-muted">Promosse</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sezione risultati -->
+    {% if results %}
+    <div class="card mb-4">
+        <div class="card-header bg-light">
+            <div class="row align-items-center gy-2">
+                <div class="col-auto">
+                    <h5 class="mb-0">
+                        <i class="fas fa-table"></i> Risultati
+                        <span class="badge bg-secondary ms-2">{{ results|length }}</span>
+                    </h5>
+                </div>
+                <div class="col">
+                    <!-- Filtri rapidi -->
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <div class="btn-group btn-group-sm" role="group" id="quickFilterGroup">
+                            <button type="button" class="btn btn-outline-secondary active" onclick="filterResults('all', this)">
+                                Tutte ({{ results|length }})
+                            </button>
+                            <button type="button" class="btn btn-outline-warning" onclick="filterResults('candidate', this)">
+                                Candidati ({{ results | selectattr('is_candidate') | list | length }})
+                            </button>
+                            <button type="button" class="btn btn-outline-success" onclick="filterResults('new', this)">
+                                Nuove ({{ results | selectattr('is_candidate') | rejectattr('is_known_variable') | list | length }})
+                            </button>
+                            <button type="button" class="btn btn-outline-info" onclick="filterResults('known', this)">
+                                Var. note ({{ results | selectattr('is_known_variable') | list | length }})
+                            </button>
+                            <button type="button" class="btn btn-outline-danger" onclick="filterResults('failed', this)">
+                                Download falliti ({{ results | selectattr('download_failed') | list | length }})
+                            </button>
+                        </div>
+
+                        <!-- Filtri soglie dinamici -->
+                        <div class="d-flex gap-1 align-items-center small border rounded px-2 py-1 bg-light">
+                            <span class="text-muted me-1">Soglie:</span>
+                            <label class="mb-0 text-muted">J&gt;</label>
+                            <input type="number" id="filterStetsonJ" class="form-control form-control-sm"
+                                   style="width:65px;" step="0.1" min="0" value="{{ job.stetson_j_threshold }}"
+                                   oninput="applyThresholdFilter()" title="Soglia Stetson J">
+                            <label class="mb-0 text-muted ms-1">χ²&gt;</label>
+                            <input type="number" id="filterChi2" class="form-control form-control-sm"
+                                   style="width:65px;" step="0.5" min="0" value="{{ job.chi2_threshold }}"
+                                   oninput="applyThresholdFilter()" title="Soglia chi² ridotto">
+                            <button class="btn btn-sm btn-outline-primary py-0 ms-1" onclick="applyThresholdFilter()" title="Applica soglie">
+                                <i class="fas fa-filter"></i>
+                            </button>
+                            <span id="thresholdMatchCount" class="badge bg-primary ms-1"></span>
+                        </div>
+
+                        <!-- Toggle preview grafici -->
+                        <button class="btn btn-sm btn-outline-primary" id="togglePreviewBtn" onclick="togglePreview()">
+                            <i class="fas fa-chart-line"></i> Mostra Grafici
+                        </button>
+
+                        <!-- Selezione tutta -->
+                        <button class="btn btn-sm btn-outline-secondary" onclick="toggleSelectAll()">
+                            <i class="fas fa-check-square"></i> Sel. tutti
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive" style="max-height: 650px; overflow-y: auto;">
+                <table class="table table-sm table-hover mb-0" id="resultsTable">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th style="width: 3%"><input type="checkbox" id="selectAllCheckbox" onchange="selectAllRows()"></th>
+                            <th style="width: 9%">TIC ID</th>
+                            <th style="width: 5%">Sector</th>
+                            <th style="width: 12%">Gaia ID</th>
+                            <th style="width: 6%">TESSMAG</th>
+                            <th style="width: 6%">N pts</th>
+                            <th style="width: 7%">Mean Mag</th>
+                            <th style="width: 7%">Stetson J</th>
+                            <th style="width: 6%">χ²</th>
+                            <th style="width: 6%">Candidato</th>
+                            <th style="width: 8%">Var. nota</th>
+                            <th style="width: 12%" class="preview-col d-none">Preview</th>
+                            <th style="width: 13%">Flag</th>
+                            <th style="width: 5%"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for result in results %}
+                        <tr class="result-row
+                            {% if result.download_failed %}table-secondary{% elif result.is_candidate and not result.is_known_variable %}table-warning bg-opacity-25{% endif %}"
+                            data-is-candidate="{{ result.is_candidate | lower }}"
+                            data-is-known="{{ result.is_known_variable | lower }}"
+                            data-download-failed="{{ result.download_failed | lower }}"
+                            data-is-valid="{{ result.is_valid | lower }}"
+                            data-stetson-j="{{ result.stetson_j or 0 }}"
+                            data-chi2="{{ result.chi_squared or 0 }}">
+
+                            <!-- Checkbox selezione -->
+                            <td>
+                                <input type="checkbox" class="result-checkbox" value="{{ result.id }}"
+                                       {% if not result.is_promotable_cached %}disabled title="Non promotable (no Gaia o download fallito)"{% endif %}>
+                            </td>
+
+                            <!-- TIC ID -->
+                            <td class="small font-monospace">
+                                {% if result.tic_id %}
+                                <a href="https://exofop.ipac.caltech.edu/tess/target.php?id={{ result.tic_id }}"
+                                   target="_blank" title="ExoFOP TIC {{ result.tic_id }}">
+                                    {{ result.tic_id }}
+                                </a>
+                                {% else %}—{% endif %}
+                            </td>
+
+                            <!-- Sector -->
+                            <td class="text-center">
+                                {% if result.sector %}<span class="badge bg-light text-dark border">S{{ result.sector }}</span>{% else %}—{% endif %}
+                            </td>
+
+                            <!-- Gaia ID -->
+                            <td class="small font-monospace">
+                                {% if result.gaia_source_id %}
+                                <a href="/agata/admin/stars-catalog?gaia_id={{ result.gaia_source_id }}"
+                                   target="_blank" title="Apri in Stars Catalog">
+                                    {{ result.gaia_source_id }}
+                                </a>
+                                {% if result.in_agata_star %}
+                                <span class="badge bg-success ms-1" title="Già in Stars Catalog">✓</span>
+                                {% endif %}
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+
+                            <!-- TESSMAG -->
+                            <td>
+                                {% if result.tess_mag %}{{ "%.2f"|format(result.tess_mag) }}{% else %}—{% endif %}
+                            </td>
+
+                            <!-- N punti -->
+                            <td>
+                                {% if not result.download_failed %}
+                                <span title="{{ result.n_points }} totali, {{ result.n_points_used }} usati">
+                                    {{ result.n_points_used }}
+                                    {% if result.n_points != result.n_points_used %}
+                                    <small class="text-muted">/{{ result.n_points }}</small>
+                                    {% endif %}
+                                </span>
+                                {% if result.curve_used == 'raw' %}
+                                <i class="fas fa-exclamation-circle text-warning ms-1" title="Usando curva SAP (grezza)"></i>
+                                {% endif %}
+                                {% else %}
+                                <span class="text-danger small" title="{{ result.download_error }}">
+                                    <i class="fas fa-times-circle"></i> fail
+                                </span>
+                                {% endif %}
+                            </td>
+
+                            <!-- Mean Mag -->
+                            <td>
+                                {% if result.mean_mag %}{{ "%.3f"|format(result.mean_mag) }}{% else %}—{% endif %}
+                            </td>
+
+                            <!-- Stetson J -->
+                            <td>
+                                {% if result.stetson_j is not none %}
+                                <span class="badge {{ 'bg-danger' if result.stetson_j > job.stetson_j_threshold else 'bg-light text-dark border' }}">
+                                    {{ "%.3f"|format(result.stetson_j) }}
+                                </span>
+                                {% else %}—{% endif %}
+                            </td>
+
+                            <!-- Chi squared -->
+                            <td>
+                                {% if result.chi_squared is not none %}
+                                <span class="badge {{ 'bg-danger' if result.chi_squared > job.chi2_threshold else 'bg-light text-dark border' }}">
+                                    {{ "%.2f"|format(result.chi_squared) }}
+                                </span>
+                                {% else %}—{% endif %}
+                            </td>
+
+                            <!-- Candidato -->
+                            <td class="text-center">
+                                {% if result.is_candidate %}
+                                <span class="badge bg-warning text-dark">Sì</span>
+                                {% else %}
+                                <span class="text-muted small">—</span>
+                                {% endif %}
+                            </td>
+
+                            <!-- Var. nota (VSX / Gaia flag) -->
+                            <td>
+                                {% if result.is_known_variable %}
+                                    {% if result.variable_type %}
+                                    <span class="badge bg-info text-dark" title="Tipo: {{ result.variable_type }}">{{ result.variable_type }}</span>
+                                    {% else %}
+                                    <span class="badge bg-info text-dark">Var. nota</span>
+                                    {% endif %}
+                                    {% if result.vsx_match %}
+                                    <small class="d-block text-muted">VSX: {{ result.vsx_match.get('name', '') }}</small>
+                                    {% endif %}
+                                    {% if result.gaia_variability_flags %}
+                                    <small class="d-block text-muted">Gaia: {{ result.gaia_variability_flags }}</small>
+                                    {% endif %}
+                                {% else %}
+                                    {% if result.atlas_match %}
+                                    <span class="badge bg-light text-dark border" title="ATLAS match (non conta per is_known_variable)">
+                                        ATLAS: {{ result.atlas_match.get('class', '') }}
+                                    </span>
+                                    {% else %}
+                                    <span class="text-muted small">—</span>
+                                    {% endif %}
+                                {% endif %}
+                            </td>
+
+                            <!-- Preview chart (dati caricati via API solo on-demand) -->
+                            <td class="preview-col d-none">
+                                {% if result.lc_preview_json %}
+                                <div id="lc-{{ result.id }}" style="width:200px; height:80px;" data-result-id="{{ result.id }}"></div>
+                                {% elif result.download_failed %}
+                                <span class="text-muted small"><i class="fas fa-ban"></i></span>
+                                {% else %}
+                                <span class="text-muted small">—</span>
+                                {% endif %}
+                            </td>
+
+                            <!-- Flag aggiuntivi -->
+                            <td>
+                                {% if not result.is_valid %}
+                                <span class="badge bg-secondary me-1" title="Match Gaia assente o ambiguo">Non valido</span>
+                                {% endif %}
+                                {% if result.is_ambiguous %}
+                                <span class="badge bg-secondary me-1" title="Match Gaia fallback RA/Dec (non TIC)">Ambiguo</span>
+                                {% endif %}
+                                {% if result.download_failed %}
+                                <span class="badge bg-danger me-1" title="{{ result.download_error }}">DL fail</span>
+                                {% endif %}
+                                {% if not result.gaia_source_id and not result.download_failed %}
+                                <span class="badge bg-light text-dark border me-1">No Gaia</span>
+                                {% endif %}
+                                {% if result.is_promotable_cached and result.in_agata_star %}
+                                <span class="badge bg-success me-1" title="Già in Stars Catalog">✓ AGATA</span>
+                                {% endif %}
+                            </td>
+
+                            <td class="text-center" style="white-space: nowrap;">
+                                <button class="btn btn-xs btn-outline-danger py-0 px-1 reject-btn"
+                                        data-result-id="{{ result.id }}"
+                                        data-rejected="{{ result.is_rejected | lower }}"
+                                        onclick="toggleReject(this)"
+                                        title="{{ 'Annulla rifiuto' if result.is_rejected else 'Rifiuta stella' }}"
+                                        style="font-size:0.7rem;">
+                                    {{ '↩ Annulla' if result.is_rejected else '✕ Rifiuta' }}
+                                </button>
+                                {% if result.lc_full_json %}
+                                <a class="btn btn-xs btn-outline-primary py-0 px-1"
+                                   href="{{ url_for('variable_stars.preview_index', source='tess', result_id=result.id) }}"
+                                   target="_blank"
+                                   title="Apri lightcurve nell'editor (preview)"
+                                   style="font-size:0.7rem; white-space:nowrap;">
+                                    📈 Analizza
+                                </a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card promozione (solo se completato) -->
+    {% if job.state == 'completed' %}
+    <div class="card mb-4" id="promotionCard">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0"><i class="fas fa-upload"></i> Promuovi in Stars Catalog</h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted mb-3">
+                Importa le stelle selezionate (con Gaia ID valido e curva di luce disponibile) in
+                <strong>agata_star_photometry</strong>. La curva di luce TESS sarà disponibile nello
+                Stars Catalog senza necessità di re-download da MAST.
+            </p>
+
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="excludeKnownVariables">
+                <label class="form-check-label" for="excludeKnownVariables">
+                    Escludi variabili note (VSX o flag Gaia) dalla promozione
+                </label>
+            </div>
+
+            <div class="d-flex gap-2 flex-wrap">
+                <button class="btn btn-outline-success" onclick="promoteSelected()">
+                    <i class="fas fa-upload"></i> Promuovi selezionati
+                </button>
+                <button class="btn btn-success" onclick="promoteAll()">
+                    <i class="fas fa-upload"></i> Promuovi tutti gli eligible
+                </button>
+            </div>
+
+            <div id="promotionResult" class="mt-3" style="display: none;"></div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% elif job.state == 'completed' %}
+    <div class="alert alert-warning">
+        <i class="fas fa-exclamation-triangle"></i>
+        Job completato ma nessun risultato trovato (nessun file soddisfaceva i criteri minimi).
+    </div>
+    {% elif job.is_running %}
+    <div class="card mb-4">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-spinner fa-spin fa-3x text-primary mb-3"></i>
+            <h5>Pipeline in esecuzione...</h5>
+            <p class="text-muted" id="currentStepRunning">{{ job.current_step or 'Elaborazione in corso' }}</p>
+            <small class="text-muted">La pagina si aggiornerà automaticamente ogni 5 secondi.</small>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+
+<script>
+const JOB_ID = {{ job.id }};
+const JOB_CODE = "{{ job.job_code }}";
+
+// ─── Mostra messaggio promozione salvato in sessionStorage ─────────────────────
+(function() {
+    const msg = sessionStorage.getItem('promotionMessage');
+    if (msg) {
+        try {
+            const data = JSON.parse(msg);
+            const resultDiv = document.getElementById('promotionResult');
+            if (resultDiv && data.type === 'success') {
+                let html = `
+                    <div class="alert alert-success">
+                        <h6><i class="fas fa-check-circle"></i> Promozione completata!</h6>
+                        <ul class="mb-2">
+                            <li><strong>${data.promoted}</strong> stelle promosse</li>
+                            <li><strong>${data.points}</strong> punti fotometrici importati</li>
+                        </ul>
+                `;
+                if (data.catalogLink) {
+                    html += `
+                        <a href="${data.catalogLink}" class="btn btn-primary" target="_blank">
+                            <i class="fas fa-chart-line"></i> Visualizza grafici in Stars Catalog
+                        </a>
+                    `;
+                }
+                html += '</div>';
+                resultDiv.innerHTML = html;
+                resultDiv.style.display = 'block';
+            }
+            sessionStorage.removeItem('promotionMessage');
+        } catch (e) {
+            console.error('Failed to parse promotion message:', e);
+        }
+    }
+})();
+
+// ─── Preview chart toggle + renderer (Plotly, stesso stile Catalogo Stelle) ──
+let previewVisible = false;
+let previewRendered = false;
+
+function togglePreview() {
+    previewVisible = !previewVisible;
+    const cols = document.querySelectorAll('.preview-col');
+    const btn = document.getElementById('togglePreviewBtn');
+
+    cols.forEach(el => el.classList.toggle('d-none', !previewVisible));
+    btn.innerHTML = previewVisible
+        ? '<i class="fas fa-chart-line"></i> Nascondi Grafici'
+        : '<i class="fas fa-chart-line"></i> Mostra Grafici';
+
+    if (previewVisible && !previewRendered) {
+        renderPreviewCharts();
+        previewRendered = true;
+    }
+}
+
+async function renderPreviewCharts() {
+    if (typeof Plotly === 'undefined') return;
+    const divs = document.querySelectorAll('[id^="lc-"][data-result-id]');
+    if (divs.length === 0) return;
+
+    const ids = [...divs].map(d => d.dataset.resultId).join(',');
+    let previews;
+    try {
+        const resp = await fetch(`/agata/admin/api/tess-bulk-import/jobs/${JOB_ID}/previews?ids=${ids}`);
+        previews = await resp.json();
+    } catch (e) { return; }
+
+    divs.forEach(div => {
+        const data = previews[div.dataset.resultId];
+        if (!data) return;
+        const hjd = data.hjd || [];
+        const mag = data.mag || [];
+        if (mag.length < 2) return;
+        Plotly.newPlot(div.id, [{
+            x: hjd, y: mag,
+            mode: 'markers', type: 'scatter',
+            marker: { size: 3, color: 'rgba(52, 152, 219, 0.6)' },
+            hovertemplate: '<b>JD:</b> %{x:.2f}<br><b>Mag:</b> %{y:.3f}<extra></extra>'
+        }], {
+            margin: { t: 2, b: 20, l: 30, r: 2 },
+            xaxis: { tickfont: { size: 8 }, showgrid: true, gridcolor: '#e0e0e0' },
+            yaxis: { tickfont: { size: 8 }, showgrid: true, gridcolor: '#e0e0e0', autorange: 'reversed' },
+            paper_bgcolor: 'white',
+            plot_bgcolor: 'rgba(255,255,255,0.7)',
+            hovermode: 'closest'
+        }, { responsive: true, displayModeBar: false });
+    });
+}
+
+// ─── Filtri rapidi ───────────────────────────────────────────────────────────
+let currentQuickFilter = 'all';
+
+function filterResults(filter, btn) {
+    currentQuickFilter = filter;
+    document.querySelectorAll('#quickFilterGroup .btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    applyThresholdFilter();
+}
+
+function applyThresholdFilter() {
+    const stetsonJ = parseFloat(document.getElementById('filterStetsonJ').value) || 0;
+    const chi2 = parseFloat(document.getElementById('filterChi2').value) || 0;
+    let matchCount = 0;
+
+    document.querySelectorAll('.result-row').forEach(row => {
+        let visible = true;
+
+        // Filtro rapido
+        switch (currentQuickFilter) {
+            case 'candidate':
+                visible = row.dataset.isCandidate === 'true';
+                break;
+            case 'new':
+                visible = row.dataset.isCandidate === 'true' && row.dataset.isKnown === 'false';
+                break;
+            case 'known':
+                visible = row.dataset.isKnown === 'true';
+                break;
+            case 'failed':
+                visible = row.dataset.downloadFailed === 'true';
+                break;
+            // 'all': visible = true
+        }
+
+        // Filtro soglie (sovrascrive solo se almeno una soglia è > 0)
+        if (visible && (stetsonJ > 0 || chi2 > 0)) {
+            const rowStetson = parseFloat(row.dataset.stetsonJ) || 0;
+            const rowChi2 = parseFloat(row.dataset.chi2) || 0;
+            if (stetsonJ > 0 && chi2 > 0) {
+                visible = rowStetson > stetsonJ || rowChi2 > chi2;
+            } else if (stetsonJ > 0) {
+                visible = rowStetson > stetsonJ;
+            } else {
+                visible = rowChi2 > chi2;
+            }
+        }
+
+        row.style.display = visible ? '' : 'none';
+        if (visible) matchCount++;
+    });
+
+    const badge = document.getElementById('thresholdMatchCount');
+    if (badge) badge.textContent = matchCount + ' righe';
+}
+
+// ─── Rifiuta/Annulla stella ───────────────────────────────────────────────────
+async function toggleReject(btn) {
+    const resultId = btn.dataset.resultId;
+    btn.disabled = true;
+    try {
+        const r = await fetch(`/agata/admin/api/tess-bulk-import/results/${resultId}/reject`, { method: 'POST' });
+        const data = await r.json();
+        if (data.success) {
+            const row = btn.closest('tr');
+            row.dataset.isRejected = data.is_rejected ? 'true' : 'false';
+            row.classList.toggle('table-danger', data.is_rejected);
+            row.classList.toggle('opacity-50', data.is_rejected);
+            btn.dataset.rejected = data.is_rejected ? 'true' : 'false';
+            btn.textContent = data.is_rejected ? '↩ Annulla' : '✕ Rifiuta';
+            btn.title = data.is_rejected ? 'Annulla rifiuto' : 'Rifiuta stella';
+            applyThresholdFilter();
+        }
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// ─── Selezione massiva ───────────────────────────────────────────────────────
+function selectAllRows() {
+    const checked = document.getElementById('selectAllCheckbox').checked;
+    document.querySelectorAll('.result-checkbox:not([disabled])').forEach(cb => {
+        // Seleziona solo le righe visibili
+        const row = cb.closest('tr');
+        if (!row || row.style.display === 'none') return;
+        cb.checked = checked;
+    });
+}
+
+function toggleSelectAll() {
+    const selectAll = document.getElementById('selectAllCheckbox');
+    selectAll.checked = !selectAll.checked;
+    selectAllRows();
+}
+
+// Evita doppia selezione (checkbox nella prima e ultima colonna sono sincronizzate)
+document.addEventListener('change', function(e) {
+    if (!e.target.classList.contains('result-checkbox')) return;
+    const row = e.target.closest('tr');
+    if (!row) return;
+    row.querySelectorAll('.result-checkbox').forEach(cb => {
+        cb.checked = e.target.checked;
+    });
+});
+
+function getSelectedIds() {
+    const seen = new Set();
+    document.querySelectorAll('.result-checkbox:checked').forEach(cb => seen.add(parseInt(cb.value)));
+    return seen.size > 0 ? [...seen] : null;
+}
+
+// ─── Promozione ───────────────────────────────────────────────────────────────
+function promoteSelected() {
+    const ids = getSelectedIds();
+    if (!ids || ids.length === 0) {
+        alert('Seleziona almeno una sorgente da promuovere.');
+        return;
+    }
+    doPromotion(ids);
+}
+
+function promoteAll() {
+    if (!confirm(`Promuovere TUTTE le sorgenti valide del job ${JOB_CODE}?`)) return;
+    doPromotion(null);
+}
+
+async function doPromotion(resultIds) {
+    const excludeKnown = document.getElementById('excludeKnownVariables').checked;
+    const resultDiv = document.getElementById('promotionResult');
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = '<div class="spinner-border spinner-border-sm me-2"></div> Promozione in corso...';
+
+    const body = { exclude_known_variables: excludeKnown };
+    if (resultIds) body.result_ids = resultIds;
+
+    try {
+        const resp = await fetch(`/agata/admin/api/tess-bulk-import/jobs/${JOB_ID}/promote`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await resp.json();
+
+        if (data.success) {
+            const stats = data.stats;
+            let html = `
+                <div class="alert alert-success">
+                    <h6><i class="fas fa-check-circle"></i> Promozione completata!</h6>
+                    <ul class="mb-2">
+                        <li><strong>${stats.promoted}</strong> stelle promosse</li>
+                        <li><strong>${stats.lightcurve_points}</strong> punti fotometrici importati</li>
+                        ${stats.skipped_no_gaia ? `<li class="text-muted">${stats.skipped_no_gaia} skippate (no Gaia ID)</li>` : ''}
+                        ${stats.skipped_no_lc ? `<li class="text-muted">${stats.skipped_no_lc} skippate (LC non disponibile)</li>` : ''}
+                        ${stats.skipped_known ? `<li class="text-muted">${stats.skipped_known} skippate (variabili note)</li>` : ''}
+                        ${stats.errors && stats.errors.length > 0 ? `<li class="text-danger">${stats.errors.length} errori</li>` : ''}
+                    </ul>
+            `;
+            if (data.catalog_link) {
+                html += `
+                    <a href="${data.catalog_link}" class="btn btn-primary" target="_blank">
+                        <i class="fas fa-chart-line"></i> Visualizza grafici in Stars Catalog
+                    </a>
+                `;
+            }
+            html += '</div>';
+            resultDiv.innerHTML = html;
+
+            if (stats.promoted > 0) {
+                // Salva il messaggio in sessionStorage prima del reload
+                sessionStorage.setItem('promotionMessage', JSON.stringify({
+                    type: 'success',
+                    promoted: stats.promoted,
+                    points: stats.lightcurve_points,
+                    catalogLink: data.catalog_link
+                }));
+                setTimeout(() => location.reload(), 3000);
+            }
+        } else {
+            resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> Errore: ${data.error}</div>`;
+        }
+    } catch (err) {
+        resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> Errore di rete: ${err}</div>`;
+    }
+}
+
+// ─── Riprendi job ────────────────────────────────────────────────────────────
+async function resumeJob(jobId, jobCode) {
+    if (!confirm(`Riprendere il job ${jobCode}?\n\nI file già elaborati verranno saltati.\nI cross-match verranno rieseguiti su tutti i risultati.`)) {
+        return;
+    }
+    try {
+        const resp = await fetch(`/agata/admin/api/tess-bulk-import/jobs/${jobId}/resume`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+        const data = await resp.json();
+        if (data.success) {
+            const alertEl = document.createElement('div');
+            alertEl.className = 'alert alert-warning alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+            alertEl.style.zIndex = '9999';
+            alertEl.innerHTML = `
+                <i class="fas fa-redo"></i>
+                <strong>Job ripreso!</strong> <code>${data.job_code}</code> in esecuzione.
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alertEl);
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            alert('Errore ripresa: ' + data.error);
+        }
+    } catch (err) {
+        alert('Errore di rete: ' + err);
+    }
+}
+
+// ─── Elimina job ─────────────────────────────────────────────────────────────
+async function deleteJob(jobId) {
+    if (!confirm('⚠️ Eliminare questo job e TUTTI i dati relativi (risultati e curve di luce)?\n\nQuesta azione NON è reversibile.')) {
+        return;
+    }
+
+    const btn = event.target.closest('button');
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Eliminando...';
+
+    try {
+        const resp = await fetch(`/agata/admin/api/tess-bulk-import/jobs/${jobId}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await resp.json();
+
+        if (data.success) {
+            const alertEl = document.createElement('div');
+            alertEl.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+            alertEl.style.zIndex = '9999';
+            alertEl.innerHTML = `
+                <i class="fas fa-check-circle"></i>
+                <strong>Job eliminato!</strong> ${data.message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alertEl);
+            setTimeout(() => {
+                window.location.href = '/agata/admin/tess-bulk-import/jobs';
+            }, 1500);
+        } else {
+            alert('❌ Errore: ' + data.error);
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    } catch (err) {
+        alert('❌ Errore di rete: ' + err);
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    }
+}
+
+// ─── Polling (solo se job in esecuzione) ─────────────────────────────────────
+{% if job.is_running %}
+const pollInterval = setInterval(async function() {
+    try {
+        const resp = await fetch(`/agata/admin/api/tess-bulk-import/jobs/${JOB_ID}`);
+        const data = await resp.json();
+
+        // Aggiorna progress bar
+        const bar = document.getElementById('progressBar');
+        if (bar) {
+            bar.style.width = data.progress_pct + '%';
+            bar.textContent = data.progress_pct + '%';
+            bar.setAttribute('aria-valuenow', data.progress_pct);
+        }
+
+        // Aggiorna step corrente
+        const stepDiv = document.getElementById('currentStep') || document.getElementById('currentStepRunning');
+        if (stepDiv && data.current_step) {
+            stepDiv.innerHTML = '<i class="fas fa-info-circle"></i> ' + data.current_step;
+        }
+
+        // Se terminato: ricarica
+        if (['completed', 'failed', 'cancelled'].includes(data.state)) {
+            clearInterval(pollInterval);
+            setTimeout(() => location.reload(), 1000);
+        }
+    } catch (e) {
+        console.warn('Polling error:', e);
+    }
+}, 5000);
+{% endif %}
+</script>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('admin.static', filename='vendor/plotly/plotly-2.30.0.min.js') }}"></script>
+{% endblock %}

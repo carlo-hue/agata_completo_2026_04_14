@@ -1,0 +1,148 @@
+╔════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╗║                           ASTROGEN MARKDOWN FILES - QUICK REFERENCE TABLE                                                               ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════╝
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+🏠 ROOT DIRECTORY (13 FILE)
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+📖 Setup & Documentation
+  README.md                                  | 176L | 4.4KB | 2026-01-13 | Main project intro + quick start
+
+🚀 Getting Started (Knowledge Base)
+  INIZIA_QUI.md                              | 296L | 6.0KB | 2026-01-31 | QB: Voyage AI setup (5 steps)
+  INIZIA_QUI_SENTENCE_TRANSFORMERS.md        | 158L | 3.6KB | 2026-01-31 | QB: Sentence Transformers FREE (3 commands)
+  KB_README.md                               | 217L | 5.3KB | 2026-01-31 | KB main docs: semantic search email
+  KNOWLEDGE_BASE_QUICKSTART.md               | 150L | 3.8KB | 2026-01-31 | QB: Setup 5 min (DB, MBOX, embeddings)
+  KNOWLEDGE_BASE_NO_OPENAI.md                | 246L | 5.8KB | 2026-01-31 | 3 options: Sentence-T, Voyage, Cerebras
+
+🔮 AI & Embeddings
+  VOYAGE_AI_SETUP.md                         | 343L | 7.5KB | 2026-01-31 | Voyage AI full setup (free 100M token/mo)
+
+⚡ Performance & Optimization
+  REDIS_CACHING_GUIDE.md                     | 314L | 6.8KB | 2026-01-31 | Cache: VSX analogues, TTL 1h
+  MEMORY_OPTIMIZATION.md                     | 122L | 3.8KB | 2026-02-01 | RAM: Singleton EmbeddingService + Lazy Loading
+
+🌟 Recent Features
+  CHANGES_ASSOCIATION_ID_OWNER.md            | 188L | 6.5KB | 2026-01-23 | association_id_owner implementation
+  COORDINATE_AUTO_FETCH_UPDATE.md            | 398L |10.3KB | 2026-01-30 | Auto-fetch Gaia coordinates
+  INSTALLATION_VARIABILITY_ANALYSIS.md       | 341L | 6.1KB | 2026-01-30 | Setup variability comparison analysis
+  VARIABILITY_COMPARISON_USER_GUIDE.md       | 212L | 5.9KB | 2026-01-30 | User guide: comparative analysis tab
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+📁 AGATA SUBDIRECTORIES (8 FILE)
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+🔐 Admin Module
+  agata/admin/README.md                      | 309L | 8.9KB | 2026-01-13 | Admin blueprint: RBAC, multi-assoc, audit
+  agata/admin/services/VARIABILITY_ANALYSIS  | 445L |10.5KB | 2026-01-30 | Variability API: Gaia/VSX/ASAS-SN queries, χ² fit
+
+⭐ Variable Stars Analysis
+  agata/variable_stars/AI_ADVISOR_README.md  | 196L | 4.9KB | 2026-01-12 | AI Advisor setup: Claude suggestions
+  agata/variable_stars/STRUCTURE.md          | 149L | 6.0KB | 2026-01-13 | Module structure: 9 modular route files
+
+🪐 Exoplanets
+  agata/exoplanets/workflow_exoclock.md      | 119L | 2.7KB | 2026-01-04 | ExoClock workflow: BLS → ephemerides
+
+🎨 Frontend
+  agata/static/js/variable_stars/REFACTORING | 275L | 8.0KB | 2026-01-10 | JS refactor: phase-controls.js extraction
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+📚 DOCS/ MAIN FILES (4 FILE - CORE REFERENCE)
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+🏗️ Architecture (GOVERNANCE)
+  docs/ARCHITECTURE.md                       | 150L | 3.6KB | 2026-01-20 | Normative arch: boundaries, responsibilities
+  docs/ARCHITECTURE_MAP.md                   | 269L | 5.8KB | 2026-01-20 | Maps arch → repo structure
+  
+📊 Database & Setup
+  docs/DATABASE_SCHEMA.md                    | 571L |27.9KB | 2026-01-31 | *** CORE: 50+ tables, FKs, views, triggers ***
+  docs/KNOWLEDGE_BASE_SETUP.md               | 294L | 9.9KB | 2026-01-31 | KB architecture: MBOX→Parser→Embeddings→Search
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+🤖 AI MODULE (4 FILE)
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  docs/ai/AI_ADVISOR_IMPLEMENTATION.md       | 384L |12.6KB | 2026-01-12 | Full AI implementation: backend, frontend, models
+  docs/ai/QUICK_START_AI.md                  | 81L  | 1.6KB | 2026-01-12 | ⚡ Quick start Cerebras AI (5 min)
+  docs/ai/CEREBRAS_SETUP.md                  | 187L | 4.4KB | 2026-01-12 | Cerebras setup: FREE, Llama 3.3 70B
+  docs/ai/TEST_AI_ADVISOR.md                 | 234L | 6.1KB | 2026-01-12 | Testing AI: Cerebras vs Claude options
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+🔐 AUTHENTICATION MODULE (6 FILE)
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+✅ ACTIVE/CURRENT
+  docs/auth/AGATA_AUTH_IMPLEMENTATION_SUMMARY| 369L |12.1KB | 2026-01-13 | *** Implementation complete: 9 tables, 2 views
+  docs/auth/AGATA_AUTH_SETUP_GUIDE.md        | 531L |12.5KB | 2026-01-13 | Complete setup: dependencies, config, testing
+  docs/auth/TEST_LOGIN_GOOGLE.md             | 290L | 5.9KB | 2026-01-13 | Testing Google login
+
+📦 OLD/ARCHIVE
+  docs/auth/old/AGATA_AUTH_INSTALLATION_REPORT | 646L |16.5KB | 2026-01-13 | Install report (2026-01-13)
+  docs/auth/old/AUTHENTICATION_AZURE_ANALYSIS   | 767L |23.2KB | 2026-01-13 | Azure AD analysis (OBSOLETE)
+  docs/auth/old/AUTHENTICATION_PROPOSAL.md      | 579L |16.3KB | 2026-01-12 | OAuth proposal (OBSOLETE)
+  docs/auth/old/GOOGLE_OAUTH_SETUP.md           | 257L | 5.9KB | 2026-01-13 | Google setup (USE AGATA_AUTH_SETUP_GUIDE)
+  docs/auth/old/START_AGATA_AUTH.md             | 235L | 5.0KB | 2026-01-13 | Quick start (OBSOLETE)
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+📝 PROMPT TEMPLATES (2 FILE)
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  docs/AGATA_LOW_COST_PROMPT_TEMPLATE.md     | 289L | 4.7KB | 2026-01-20 | Detailed prompt template: reduce tokens
+  docs/AGATA_LOW_COST_PROMPT_TEMPLATE_COMPACT| 147L | 2.9KB | 2026-01-22 | Ultra-compact template (USE THIS)
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+🗂️ DOCS/OLD/ DIRECTORY (14 FILE - ARCHIVE CANDIDATES)
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+✅ PROJECT DETAIL IMPLEMENTATION (7 FILE - COMPLETED JAN 2026)
+  AGATA_PROJECT_DETAIL_IMPLEMENTATION_PLAN   | 341L |11.2KB | 2026-01-13 | Plan: DB analysis, missing pieces
+  AGATA_PROJECT_DETAIL_DB_ANALYSIS.md        | 292L | 8.5KB | 2026-01-13 | DB vs specs checklist
+  AGATA_PROJECT_DETAIL_IMPLEMENTATION_COMP   | 348L |11.3KB | 2026-01-13 | FINAL: Phase 1-3 complete
+  AGATA_PROJECT_DETAIL_QUICK_START.md        | 251L | 5.9KB | 2026-01-13 | Verify implementation
+  AGATA_IMPLEMENTATION_SUMMARY.md            | 415L |12.5KB | 2026-01-13 | Overall summary
+  AGATA_FRONTEND_IMPLEMENTATION_COMPLETE     | 327L |10.5KB | 2026-01-13 | Frontend: templates, JS
+  AGATA_PROJECT_DETAIL_IMPLEMENTATION_PLAN   | 341L |11.2KB | 2026-01-13 | (Duplicate entry)
+
+✅ FEATURE IMPLEMENTATIONS (3 FILE)
+  AGATA_CREATE_ASSOCIATION_FEATURE.md        | 395L | 9.7KB | 2026-01-13 | Feature: modal + API
+  AGATA_CREATE_PROJECT_FEATURE.md            | 435L |10.3KB | 2026-01-13 | Feature: button + form + validation
+  AAAAT_GAP_ANALYSIS.md                      | 499L |17.8KB | 2026-01-13 | Gap: implemented vs specified
+
+✅ SLACK INTEGRATION (4 FILE)
+  ASSOCIATIONS_SLACK_CHANNELS.md             | 242L | 7.0KB | 2026-01-14 | Assoc + channels mapping
+  SLACK_INTEGRATION_IMPLEMENTATION.md        | 269L | 7.2KB | 2026-01-14 | Integration complete
+  SLACK_PRIVATE_CHANNELS_SETUP.md            | 271L | 7.2KB | 2026-01-14 | Private channels config
+  SLACK_WELCOME_MESSAGES.md                  | 239L | 6.2KB | 2026-01-14 | Auto welcome messages
+
+📦 MISCELLANEOUS OLD (3 FILE)
+  external_catalogs.md                       | 370L |11.0KB | 2026-01-16 | External catalog system
+  Guida_logging_js.md                        | 444L | 8.7KB | 2026-01-01 | JS logging guide
+  SLACK_CLEANUP_INSTRUCTIONS.md              | 158L | 5.1KB | 2026-01-14 | Channel cleanup
+  README.md (in old/)                        | 88L  | 2.4KB | 2026-01-13 | Index of old docs
+  README_IMPLEMENTATION.md                   | 244L | 8.1KB | 2026-01-13 | Implementation summary
+
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+🔨 REFACTORING DIRECTORY (2 FILE)
+─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  docs/refactoring/REFACTORING_ROUTES_PROPOSAL | 593L |16.4KB | 2026-01-12 | Proposal: split routes.py
+  docs/refactoring/REFACTORING_SUMMARY.md      | 166L | 6.0KB | 2026-01-13 | COMPLETED: 2210L → 9 files
+
+═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+
+SUMMARY STATISTICS:
+  Total Files        : 52 markdown files
+  Total Size         : ~456 KB
+  Total Lines        : ~15,100 lines
+  Largest File       : DATABASE_SCHEMA.md (571 lines, 27.9 KB)
+  Smallest File      : QUICK_START_AI.md (81 lines, 1.6 KB)
+  
+Recent Updates (Last 3 days):
+  • MEMORY_OPTIMIZATION.md (2026-02-01)
+  • Multiple KB guides (2026-01-31)
+  
+Files to Archive (Completed Features):
+  • 14 files in docs/old/ (Jan 2026 implementations)
+  • Recommend moving to: docs/old/archive/ or docs/archive/
+
+═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════

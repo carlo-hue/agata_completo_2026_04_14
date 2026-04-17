@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AGATA - Galassie Nane</title>
+
+    <link rel="stylesheet" href="{{ url_for('galassie_nane.static', filename='css/common.css') }}">
+    <link rel="stylesheet" href="{{ url_for('galassie_nane.static', filename='css/galassie_nane.css') }}">
+    <link rel="stylesheet" href="{{ url_for('galassie_nane.static', filename='vendor/bootstrap-icons-1.11.0/font/bootstrap-icons.css') }}">
+    <script>
+        window.GALASSIE_NANE_API_BASE_URL = {{ api_base_url|tojson }};
+    </script>
+</head>
+<body>
+    <aside class="module-sidebar">
+        <div class="module-sidebar-title">Moduli Principali</div>
+        <nav class="module-nav">
+            <a href="{{ url_for('admin.list_projects') }}" class="module-nav-link">
+                <i class="bi bi-wrench"></i>
+                Admin
+            </a>
+            <a href="{{ url_for('variable_stars.index') }}" class="module-nav-link">
+                <i class="bi bi-graph-up"></i>
+                Editor Stelle
+            </a>
+            <a href="{{ url_for('exoplanets.index') }}" class="module-nav-link">
+                <i class="bi bi-globe"></i>
+                Esopianeti
+            </a>
+            <a href="{{ url_for('mappe_stelle.index') }}" class="module-nav-link">
+                <i class="bi bi-bullseye"></i>
+                Field Star Map
+            </a>
+            <a href="{{ url_for('galassie_nane.index') }}" class="module-nav-link active">
+                <i class="bi bi-stars"></i>
+                Galassie Nane
+            </a>
+        </nav>
+    </aside>
+
+    <div class="app-shell">
+        <header>
+            <h1>AGATA - Galassie Nane</h1>
+            <nav>
+                <a href="{{ url_for('variable_stars.index') }}">Stelle Variabili</a>
+                <a href="{{ url_for('exoplanets.index') }}">Esopianeti</a>
+                <a href="{{ url_for('mappe_stelle.index') }}">Field Star Map</a>
+                <a href="{{ url_for('galassie_nane.index') }}" class="active">Galassie Nane</a>
+            </nav>
+        </header>
+
+        <main>
+            <section class="panel">
+                <h2 id="singleRunTitle">Analisi Singola (Mock Gaia)</h2>
+                <div class="form-grid">
+                    <label>RA [deg]
+                        <input id="raInput" type="number" step="0.0001" value="152.1175">
+                    </label>
+                    <label>Dec [deg]
+                        <input id="decInput" type="number" step="0.0001" value="12.3058">
+                    </label>
+                    <label>Radius [deg]
+                        <input id="radiusInput" type="number" step="0.01" value="0.2">
+                    </label>
+                    <label>G max
+                        <input id="gmaxInput" type="number" step="0.1" value="21.0">
+                    </label>
+                    <label>RUWE max
+                        <input id="ruweInput" type="number" step="0.1" value="1.6">
+                    </label>
+                    <label>Cell [arcmin]
+                        <input id="cellInput" type="number" step="0.1" value="1.0">
+                    </label>
+                    <div class="form-side-panel">
+                        <button id="runSingleBtn" class="btn-primary" type="button">Esegui...</button>
+                        <label class="inline-check">
+                            <input id="useRealGaiaInput" type="checkbox">
+                            <span>Usa Gaia reale</span>
+                        </label>
+                        <label class="inline-check">
+                            <input id="extragalOffInput" type="checkbox">
+                            <span>Disabilita filtro extragal</span>
+                        </label>
+                    </div>
+                </div>
+                <p class="meta">API base configurata: <code id="apiBaseUrl"></code></p>
+                <p id="runStatus" class="meta"></p>
+            </section>
+
+            <section class="panel">
+                <div class="section-head">
+                    <h2>Risultati</h2>
+                    <div class="section-actions">
+                        <input id="saveRunNameInput" class="save-run-name" type="text" placeholder="Nome salvataggio (es. leoI_test1)">
+                        <button id="saveRunBtn" class="btn-secondary-link" type="button">Salva risultato</button>
+                        <a class="btn-secondary-link" href="{{ url_for('galassie_nane.descrizione') }}">Descrizione</a>
+                    </div>
+                </div>
+                <div class="kpi-grid">
+                    <div class="kpi-card"><div class="kpi-label">Sorgenti</div><div id="kpiSources" class="kpi-value">-</div></div>
+                    <div class="kpi-card"><div class="kpi-label">maxZ</div><div id="kpiMaxZ" class="kpi-value">-</div></div>
+                    <div class="kpi-card"><div class="kpi-label">TileScore</div><div id="kpiScore" class="kpi-value">-</div></div>
+                    <div class="kpi-card"><div class="kpi-label">Tabella Gaia</div><div id="kpiProvider" class="kpi-value">-</div></div>
+                    <div class="kpi-card"><div class="kpi-label">Tempo Totale</div><div id="kpiElapsed" class="kpi-value">-</div></div>
+                </div>
+                <div class="result-meta-grid">
+                    <div class="meta-chip"><span class="meta-chip-label">Filtro extragal</span><span id="resultExtragal" class="meta-chip-value">-</span></div>
+                    <div class="meta-chip"><span class="meta-chip-label">Run visualizzata</span><span id="currentRunName" class="meta-chip-value">non salvato</span></div>
+                </div>
+                <p id="saveStatus" class="meta hidden"></p>
+                <h3 class="subheading">Mappe mock (densità e Z-map)</h3>
+                <div class="heatmap-grid">
+                    <div class="heatmap-card">
+                        <div class="heatmap-title">Densità (conteggi)</div>
+                        <canvas id="countsCanvas" width="330" height="330"></canvas>
+                    </div>
+                    <div class="heatmap-card">
+                        <div class="heatmap-title">Z-map</div>
+                        <canvas id="zMapCanvas" width="330" height="330"></canvas>
+                    </div>
+                </div>
+                <h3 class="subheading">Preview sorgenti mock (prime 10)</h3>
+                <div class="table-wrap">
+                    <table class="preview-table">
+                        <thead>
+                            <tr>
+                                <th>source_id</th>
+                                <th>RA</th>
+                                <th>Dec</th>
+                                <th>G</th>
+                                <th>BP-RP</th>
+                                <th>Parallax</th>
+                                <th>RUWE</th>
+                            </tr>
+                        </thead>
+                        <tbody id="sourcesPreviewBody">
+                            <tr><td colspan="7" class="empty-cell">Nessun dato.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <h3 class="subheading">Run salvate</h3>
+                <div class="saved-runs-head">
+                    <button id="refreshSavedRunsBtn" class="btn-secondary-link" type="button">Aggiorna lista</button>
+                    <span id="savedRunsStatus" class="meta hidden"></span>
+                </div>
+                <div class="table-wrap">
+                    <table class="preview-table">
+                        <thead>
+                            <tr>
+                                <th>Nome</th>
+                                <th>Data UTC</th>
+                                <th>Stelle</th>
+                                <th>Tempo</th>
+                                <th>File</th>
+                                <th>Azione</th>
+                            </tr>
+                        </thead>
+                        <tbody id="savedRunsBody">
+                            <tr><td colspan="6" class="empty-cell">Nessuna run salvata.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <pre id="errorBox" class="error-box hidden"></pre>
+            </section>
+        </main>
+    </div>
+
+    <script src="{{ url_for('galassie_nane.static', filename='js/galassie_nane/main.js') }}"></script>
+</body>
+</html>

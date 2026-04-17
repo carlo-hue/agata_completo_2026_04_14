@@ -1,0 +1,856 @@
+{% extends "admin/base.html" %}
+{% from 'macros.html' import help_button %}
+
+{% block title %}ZTF Survey {{ job.job_code }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+    <!-- Breadcrumb -->
+    <div class="mb-3">
+        <a href="{{ url_for('admin.ztf_survey_jobs_page') }}" class="btn btn-sm btn-outline-secondary">
+            <i class="fas fa-arrow-left"></i> Torna alla lista
+        </a>
+    </div>
+
+    <!-- Header -->
+    <div class="row mb-4 align-items-center">
+        <div class="col">
+            <h1><i class="fas fa-star"></i> {{ job.job_code }} {{ help_button('admin.ztf_survey') }}</h1>
+            <p class="text-muted mb-0"><strong>Campo:</strong> {{ job.target_name }}</p>
+        </div>
+        <div class="col-auto d-flex gap-2 align-items-center">
+            <span class="badge fs-6 bg-{{
+                'success' if job.state == 'completed'
+                else 'danger' if job.state == 'failed'
+                else 'warning text-dark' if job.is_running
+                else 'secondary'
+            }}">
+                {% if job.is_running %}<i class="fas fa-spinner fa-spin me-1"></i>{% endif %}
+                {{ job.state | title }}
+            </span>
+            {% if not job.is_running %}
+            <button class="btn btn-sm btn-outline-danger" onclick="deleteJob({{ job.id }})" title="Elimina job e tutti i dati relativi">
+                <i class="fas fa-trash"></i> Elimina
+            </button>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Righe info + statistiche -->
+    <div class="row mb-4">
+
+        <!-- Card: Progresso e stato -->
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-tasks"></i> Stato e Progresso</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between mb-1">
+                            <strong>Progresso totale</strong>
+                            <span class="badge bg-primary">{{ job.progress_pct }}%</span>
+                        </div>
+                        <div class="progress" style="height: 24px;">
+                            <div id="progressBar"
+                                 class="progress-bar {{ 'bg-danger' if job.state == 'failed' else 'bg-success' if job.state == 'completed' else '' }}"
+                                 role="progressbar"
+                                 style="width: {{ job.progress_pct }}%"
+                                 aria-valuenow="{{ job.progress_pct }}" aria-valuemin="0" aria-valuemax="100">
+                                {{ job.progress_pct }}%
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if job.current_step %}
+                    <div class="alert alert-info py-2 small mb-3" id="currentStep">
+                        <i class="fas fa-info-circle"></i> {{ job.current_step }}
+                    </div>
+                    {% endif %}
+
+                    {% if job.error_message %}
+                    <div class="alert alert-danger py-2 small mb-3">
+                        <i class="fas fa-exclamation-triangle"></i> <strong>Errore:</strong> {{ job.error_message }}
+                    </div>
+                    {% endif %}
+
+                    <dl class="row mb-0 small">
+                        <dt class="col-sm-5">Creato</dt>
+                        <dd class="col-sm-7">{{ job.created_at.strftime('%d/%m/%Y %H:%M') }}</dd>
+                        {% if job.started_at %}
+                        <dt class="col-sm-5">Avviato</dt>
+                        <dd class="col-sm-7">{{ job.started_at.strftime('%d/%m/%Y %H:%M') }}</dd>
+                        {% endif %}
+                        {% if job.completed_at %}
+                        <dt class="col-sm-5">Completato</dt>
+                        <dd class="col-sm-7">{{ job.completed_at.strftime('%d/%m/%Y %H:%M') }}</dd>
+                        {% endif %}
+                        {% if job.duration_seconds %}
+                        <dt class="col-sm-5">Durata</dt>
+                        <dd class="col-sm-7">{{ "%.0f"|format(job.duration_seconds) }}s</dd>
+                        {% endif %}
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card: Parametri campo + statistiche -->
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0"><i class="fas fa-crosshairs"></i> Parametri Campo</h5>
+                </div>
+                <div class="card-body">
+                    <dl class="row mb-2 small">
+                        <dt class="col-sm-5">RA centro</dt>
+                        <dd class="col-sm-7 font-monospace">{{ "%.6f"|format(job.ra_center) }}°</dd>
+                        <dt class="col-sm-5">Dec centro</dt>
+                        <dd class="col-sm-7 font-monospace">{{ "%.6f"|format(job.dec_center) }}°</dd>
+                        <dt class="col-sm-5">Raggio</dt>
+                        <dd class="col-sm-7 font-monospace">{{ job.radius_deg }}°</dd>
+                        <dt class="col-sm-5">Filtro ZTF</dt>
+                        <dd class="col-sm-7"><span class="badge bg-primary">ZTF{{ job.ztf_filter }}</span></dd>
+                        <dt class="col-sm-5">Min. osservazioni</dt>
+                        <dd class="col-sm-7">{{ job.min_observations }} punti</dd>
+                        {% if job.mag_min or job.mag_max %}
+                        <dt class="col-sm-5">Range mag</dt>
+                        <dd class="col-sm-7">
+                            {{ job.mag_min if job.mag_min else '—' }} — {{ job.mag_max if job.mag_max else '—' }}
+                        </dd>
+                        {% endif %}
+                    </dl>
+
+                    <hr class="my-2">
+                    <!-- Statistiche risultati -->
+                    <div class="row text-center">
+                        <div class="col-3">
+                            <div class="fs-5 fw-bold">{{ job.total_sources }}</div>
+                            <small class="text-muted">Sorgenti</small>
+                        </div>
+                        <div class="col-3">
+                            <div class="fs-5 fw-bold text-warning">{{ job.candidates_found }}</div>
+                            <small class="text-muted">Candidati</small>
+                        </div>
+                        <div class="col-3">
+                            <div class="fs-5 fw-bold text-info">{{ job.known_variables_found }}</div>
+                            <small class="text-muted">Var. VSX</small>
+                        </div>
+                        <div class="col-3">
+                            <div class="fs-5 fw-bold text-success">{{ job.promoted_count }}</div>
+                            <small class="text-muted">Promosse</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sezione risultati (solo se completato o ha risultati) -->
+    {% if job.results %}
+    <div class="card mb-4">
+        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="fas fa-table"></i> Risultati
+                <span class="badge bg-secondary ms-2">{{ job.results|length }}</span>
+            </h5>
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                <!-- Filtri rapidi -->
+                <div class="btn-group btn-group-sm" role="group">
+                    <button type="button" class="btn btn-outline-secondary active" onclick="filterResults('all', this)">
+                        Tutte ({{ job.results|length }})
+                    </button>
+                    <button type="button" class="btn btn-outline-warning" onclick="filterResults('candidate', this)">
+                        Candidati ({{ job.results | selectattr('is_candidate') | list | length }})
+                    </button>
+                    <button type="button" class="btn btn-outline-success" onclick="filterResults('valid', this)">
+                        Valide ({{ job.results | selectattr('is_valid') | list | length }})
+                    </button>
+                    {% set dup_count = job.results | selectattr('is_duplicate') | list | length %}
+                    {% if dup_count > 0 %}
+                    <button type="button" class="btn btn-outline-warning" onclick="filterResults('duplicate', this)">
+                        Dup. Gaia ({{ dup_count }})
+                    </button>
+                    {% endif %}
+                </div>
+                <!-- Filtri soglie dinamici -->
+                <div class="d-flex gap-1 align-items-center small border rounded px-2 py-1 bg-light">
+                    <span class="text-muted me-1">Soglie:</span>
+                    <label class="mb-0 text-muted">χ²&gt;</label>
+                    <input type="number" id="filterChi2" class="form-control form-control-sm"
+                           style="width:65px;" step="0.5" min="0" value="3.0"
+                           oninput="applyThresholdFilter()" title="Soglia chi² ridotto">
+                    <button class="btn btn-sm btn-outline-primary py-0 ms-1" onclick="applyThresholdFilter()" title="Applica soglie">
+                        <i class="fas fa-filter"></i>
+                    </button>
+                    <span id="thresholdMatchCount" class="badge bg-primary ms-1"></span>
+                </div>
+                <!-- Toggle preview grafici -->
+                <button class="btn btn-sm btn-outline-primary" id="togglePreviewBtn" onclick="togglePreview()">
+                    <i class="fas fa-chart-line"></i> Mostra Grafici
+                </button>
+                <!-- Nascondi rifiutate -->
+                <div class="form-check form-switch mb-0 ms-1">
+                    <input class="form-check-input" type="checkbox" id="hideRejected" checked onchange="applyThresholdFilter()">
+                    <label class="form-check-label small" for="hideRejected">Nascondi rifiutate</label>
+                </div>
+                <div class="form-check form-switch mb-0 ms-1">
+                    <input class="form-check-input" type="checkbox" id="hideDuplicates" checked onchange="applyThresholdFilter()">
+                    <label class="form-check-label small" for="hideDuplicates">Nascondi dup. Gaia</label>
+                </div>
+                <!-- Selezione tutta -->
+                <button class="btn btn-sm btn-outline-secondary" onclick="toggleSelectAll()">
+                    <i class="fas fa-check-square"></i> Sel. tutti
+                </button>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0" id="resultsTable">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th style="width: 3%"><input type="checkbox" id="selectAllCheckbox" onchange="selectAllRows()"></th>
+                            <th style="width: 9%">RA / Dec</th>
+                            <th style="width: 8%">ZTF OID</th>
+                            <th style="width: 4%">N pts</th>
+                            <th style="width: 7%">Mean Mag</th>
+                            <th style="width: 7%">χ²</th>
+                            <th style="width: 6%">MAD</th>
+                            <th style="width: 12%">Gaia ID</th>
+                            <th style="width: 8%">VSX Type</th>
+                            <th style="width: 14%" class="preview-col d-none">Preview</th>
+                            <th style="width: 22%">Flag</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for result in job.results %}
+                        <tr class="result-row
+                            {% if result.is_candidate %}candidate-row{% endif %}
+                            {% if not result.is_valid %}table-secondary{% endif %}
+                            {% if result.is_rejected %}table-danger opacity-50{% endif %}"
+                            data-is-candidate="{{ result.is_candidate | lower }}"
+                            data-is-valid="{{ result.is_valid | lower }}"
+                            data-is-rejected="{{ result.is_rejected | lower }}"
+                            data-is-duplicate="{{ result.is_duplicate | lower }}"
+                            data-chi2="{{ result.chi_squared or 0 }}">
+
+                            <!-- Checkbox selezione -->
+                            <td>
+                                <input type="checkbox" class="result-checkbox" value="{{ result.id }}"
+                                       {% if not result.is_valid or not result.gaia_source_id or result.is_duplicate %}disabled{% endif %}>
+                            </td>
+
+                            <!-- RA/Dec -->
+                            <td class="small font-monospace">
+                                {{ "%.4f"|format(result.ra) }}<br>
+                                {{ "%.4f"|format(result.decl) }}
+                            </td>
+
+                            <!-- ZTF OID -->
+                            <td class="small font-monospace text-muted">
+                                {{ result.ztf_object_id or '—' }}
+                            </td>
+
+                            <!-- N punti -->
+                            <td>
+                                <span title="{{ result.n_points }} totali, {{ result.n_points_used }} usati">
+                                    {{ result.n_points_used }}
+                                    {% if result.n_points != result.n_points_used %}
+                                    <small class="text-muted">/{{ result.n_points }}</small>
+                                    {% endif %}
+                                </span>
+                            </td>
+
+                            <!-- Mean Mag -->
+                            <td>
+                                {% if result.mean_mag %}
+                                {{ "%.3f"|format(result.mean_mag) }}
+                                {% else %}—{% endif %}
+                            </td>
+
+                            <!-- Chi squared -->
+                            <td>
+                                {% if result.chi_squared is not none %}
+                                <span class="badge {{ 'bg-danger' if result.chi_squared > 3.0 else 'bg-light text-dark border' }}">
+                                    {{ "%.2f"|format(result.chi_squared) }}
+                                </span>
+                                {% else %}—{% endif %}
+                            </td>
+
+                            <!-- MAD -->
+                            <td class="small">
+                                {% if result.mad is not none %}{{ "%.4f"|format(result.mad) }}{% else %}—{% endif %}
+                            </td>
+
+                            <!-- Preview chart (caricato on-demand) -->
+                            <td class="preview-col d-none">
+                                {% if result.ztf_object_id %}
+                                <div id="lc-{{ result.id }}" style="width:200px; height:80px;"></div>
+                                {% else %}
+                                <span class="text-muted small">—</span>
+                                {% endif %}
+                            </td>
+
+                            <!-- Gaia ID (link a stars-catalog se promosso, altrimenti solo ID) -->
+                            <td class="small font-monospace">
+                                {% if result.gaia_source_id %}
+                                <a href="/agata/admin/stars-catalog?gaia_id={{ result.gaia_source_id }}"
+                                   target="_blank" title="Apri in Stars Catalog">
+                                    {{ result.gaia_source_id }}
+                                </a>
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+
+                            <!-- VSX Type -->
+                            <td>
+                                {% if result.variable_type %}
+                                <span class="badge bg-warning text-dark">{{ result.variable_type }}</span>
+                                {% else %}
+                                <span class="text-muted small">—</span>
+                                {% endif %}
+                            </td>
+
+                            <!-- Flags -->
+                            <td>
+                                {% if result.is_candidate %}
+                                <span class="badge bg-warning text-dark me-1" title="Candidata variabile">Candidato</span>
+                                {% endif %}
+                                {% if result.is_known_variable %}
+                                <span class="badge bg-info me-1" title="Variabile nota in VSX">Var. nota</span>
+                                {% endif %}
+                                {% if result.is_ambiguous %}
+                                <span class="badge bg-secondary me-1" title="Match Gaia ambiguo (fallback 100&quot;)">Ambiguo</span>
+                                {% endif %}
+                                {% if not result.gaia_source_id %}
+                                <span class="badge bg-light text-dark border me-1" title="Nessun match Gaia">No Gaia</span>
+                                {% endif %}
+                                {% if result.is_duplicate %}
+                                <span class="badge bg-warning text-dark me-1"
+                                      title="Altro OID ZTF con più osservazioni mappa allo stesso Gaia ID — escluso dalla promozione">
+                                    Dup. Gaia
+                                </span>
+                                {% endif %}
+                                {% if result.in_agata_star %}
+                                <span class="badge bg-success me-1" title="Già in Stars Catalog">✓ AGATA</span>
+                                {% endif %}
+                                <button class="btn btn-xs btn-outline-danger py-0 px-1 ms-1 reject-btn"
+                                        style="font-size:0.7rem;"
+                                        data-result-id="{{ result.id }}"
+                                        data-rejected="{{ result.is_rejected | lower }}"
+                                        onclick="toggleReject(this)"
+                                        title="{{ 'Annulla rifiuto' if result.is_rejected else 'Rifiuta stella' }}">
+                                    {{ '↩ Annulla' if result.is_rejected else '✕ Rifiuta' }}
+                                </button>
+                                {% if result.ztf_object_id %}
+                                <a class="btn btn-xs btn-outline-primary py-0 px-1 ms-1"
+                                   href="{{ url_for('variable_stars.preview_index', source='ztf', result_id=result.id) }}"
+                                   target="_blank"
+                                   title="Apri lightcurve nell'editor (preview)"
+                                   style="font-size:0.7rem;">
+                                    📈 Analizza
+                                </a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <!-- Paginazione -->
+            <div class="d-flex justify-content-between align-items-center px-3 py-2 border-top bg-light">
+                <div class="small text-muted">
+                    Pagina <span id="pageInfo"></span>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-secondary" id="prevPageBtn" onclick="changePage(-1)">
+                        <i class="fas fa-chevron-left"></i> Prec
+                    </button>
+                    <select class="form-select form-select-sm" style="width:auto;" id="pageSizeSelect" onchange="changePageSize()">
+                        <option value="10">10 / pagina</option>
+                        <option value="25">25 / pagina</option>
+                        <option value="50" selected>50 / pagina</option>
+                        <option value="100">100 / pagina</option>
+                        <option value="200">200 / pagina</option>
+                        <option value="9999">Tutte</option>
+                    </select>
+                    <button class="btn btn-sm btn-outline-secondary" id="nextPageBtn" onclick="changePage(1)">
+                        Succ <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sezione promozione (solo se completato) -->
+    {% if job.state == 'completed' %}
+    <div class="card mb-4" id="promotionCard">
+        <div class="card-header bg-success text-white">
+            <h5 class="mb-0"><i class="fas fa-upload"></i> Promuovi in Stars Catalog</h5>
+        </div>
+        <div class="card-body">
+            <p class="text-muted mb-3">
+                Importa le stelle selezionate (con Gaia ID valido) in
+                <strong>agata_star_photometry</strong>. I dati fotometrici ZTF saranno
+                disponibili nello Stars Catalog con anteprima grafici.
+            </p>
+
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" id="excludeKnownVariables">
+                <label class="form-check-label" for="excludeKnownVariables">
+                    Escludi variabili note (VSX) dalla promozione
+                </label>
+            </div>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="excludeInAgata" checked>
+                <label class="form-check-label" for="excludeInAgata">
+                    Escludi stelle già presenti in AGATA
+                    <span class="badge bg-success ms-1">✓ AGATA</span>
+                    con dati ZTF già importati
+                </label>
+            </div>
+
+            <div class="d-flex gap-2 flex-wrap">
+                <button class="btn btn-outline-success" id="promoteSelectedBtn" onclick="promoteSelected()">
+                    <i class="fas fa-upload"></i> Promuovi selezionati
+                </button>
+                <button class="btn btn-success" id="promoteAllBtn" onclick="promoteAll()">
+                    <i class="fas fa-upload"></i> Promuovi tutti gli eligible
+                </button>
+            </div>
+
+            <!-- Progress promozione -->
+            <div id="promotionProgress" class="mt-3" style="display: none;">
+                <div class="d-flex justify-content-between mb-1 small">
+                    <span id="promoStatusText"><i class="fas fa-spinner fa-spin me-1"></i> Caricamento curve di luce da IRSA...</span>
+                    <span id="promoCountText" class="text-muted"></span>
+                </div>
+                <div class="progress mb-2" style="height: 20px;">
+                    <div id="promoProgressBar" class="progress-bar progress-bar-striped progress-bar-animated"
+                         role="progressbar" style="width: 0%">0%</div>
+                </div>
+            </div>
+
+            <!-- Risultato promozione (mostrato dopo completamento) -->
+            <div id="promotionResult" class="mt-3" style="display: none;"></div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% elif job.state == 'completed' %}
+    <div class="alert alert-warning">
+        <i class="fas fa-exclamation-triangle"></i>
+        Job completato ma nessun risultato trovato (nessuna sorgente soddisfaceva i criteri min_observations).
+    </div>
+    {% elif job.is_running %}
+    <div class="card mb-4">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-spinner fa-spin fa-3x text-primary mb-3"></i>
+            <h5>Pipeline in esecuzione...</h5>
+            <p class="text-muted" id="currentStepRunning">{{ job.current_step or 'Elaborazione in corso' }}</p>
+            <small class="text-muted">La pagina si aggiornerà automaticamente ogni 5 secondi.</small>
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+
+<script>
+const JOB_ID = {{ job.id }};
+const JOB_CODE = "{{ job.job_code }}";
+
+// ─── Mostra messaggio promozione salvato in sessionStorage ─────────────────────
+(function() {
+    const msg = sessionStorage.getItem('promotionMessage');
+    if (msg) {
+        try {
+            const data = JSON.parse(msg);
+            const resultDiv = document.getElementById('promotionResult');
+            if (resultDiv && data.type === 'success') {
+                let html = `
+                    <div class="alert alert-success">
+                        <h6><i class="fas fa-check-circle"></i> Promozione completata!</h6>
+                        <ul class="mb-2">
+                            <li><strong>${data.promoted}</strong> stelle promosse</li>
+                            <li><strong>${data.points}</strong> punti fotometrici importati</li>
+                        </ul>
+                `;
+                if (data.catalogLink) {
+                    html += `
+                        <a href="${data.catalogLink}" class="btn btn-primary" target="_blank">
+                            <i class="fas fa-chart-line"></i> Visualizza grafici in Stars Catalog
+                        </a>
+                    `;
+                }
+                html += '</div>';
+                resultDiv.innerHTML = html;
+                resultDiv.style.display = 'block';
+            }
+            sessionStorage.removeItem('promotionMessage');
+        } catch (e) {
+            console.error('Failed to parse promotion message:', e);
+        }
+    }
+})();
+
+// ─── Preview grafici (fetch on-demand da IRSA via proxy backend) ──────────────
+let previewVisible = false;
+let previewRendered = new Set();
+
+function togglePreview() {
+    previewVisible = !previewVisible;
+    const cols = document.querySelectorAll('.preview-col');
+    const btn = document.getElementById('togglePreviewBtn');
+    cols.forEach(el => el.classList.toggle('d-none', !previewVisible));
+    btn.innerHTML = previewVisible
+        ? '<i class="fas fa-chart-line"></i> Nascondi Grafici'
+        : '<i class="fas fa-chart-line"></i> Mostra Grafici';
+    if (previewVisible) renderVisibleCharts();
+}
+
+function renderVisibleCharts() {
+    if (typeof Plotly === 'undefined') return;
+    document.querySelectorAll('[id^="lc-"]').forEach(div => {
+        if (previewRendered.has(div.id)) return;
+        const row = div.closest('tr');
+        if (row && row.style.display === 'none') return;
+        const resultId = div.id.replace('lc-', '');
+        previewRendered.add(div.id);
+        fetch(`/agata/admin/api/ztf-survey/results/${resultId}/lightcurve`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.hjd || data.hjd.length < 2) {
+                    div.innerHTML = '<small class="text-muted">—</small>';
+                    return;
+                }
+                Plotly.newPlot(div.id, [{
+                    x: data.hjd,
+                    y: data.mag,
+                    mode: 'markers',
+                    type: 'scatter',
+                    marker: { size: 3, color: 'rgba(52,152,219,0.6)' },
+                    hovertemplate: '<b>JD:</b> %{x:.2f}<br><b>Mag:</b> %{y:.3f}<extra></extra>'
+                }], {
+                    margin: { t: 2, b: 20, l: 30, r: 2 },
+                    xaxis: { tickfont: { size: 8 }, showgrid: true, gridcolor: '#e0e0e0' },
+                    yaxis: { tickfont: { size: 8 }, showgrid: true, gridcolor: '#e0e0e0', autorange: 'reversed' },
+                    paper_bgcolor: 'white',
+                    plot_bgcolor: 'rgba(255,255,255,0.7)',
+                    hovermode: 'closest'
+                }, { responsive: true, displayModeBar: false });
+            })
+            .catch(() => { div.innerHTML = '<small class="text-muted text-danger">Errore</small>'; });
+    });
+}
+
+// ─── Paginazione ──────────────────────────────────────────────────────────────
+let currentPage = 1;
+let pageSize = 50;
+let filteredRows = [];  // righe visibili dopo filtro
+
+function changePageSize() {
+    pageSize = parseInt(document.getElementById('pageSizeSelect').value);
+    currentPage = 1;
+    renderPage();
+}
+
+function changePage(delta) {
+    const totalPages = Math.ceil(filteredRows.length / pageSize);
+    currentPage = Math.max(1, Math.min(currentPage + delta, totalPages));
+    renderPage();
+}
+
+function renderPage() {
+    const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+    const start = (currentPage - 1) * pageSize;
+    const end = start + pageSize;
+
+    // Mostra solo le righe della pagina corrente
+    filteredRows.forEach((row, i) => {
+        row.style.display = (i >= start && i < end) ? '' : 'none';
+    });
+
+    document.getElementById('pageInfo').textContent = `${currentPage} / ${totalPages} (${filteredRows.length} righe)`;
+    document.getElementById('prevPageBtn').disabled = currentPage <= 1;
+    document.getElementById('nextPageBtn').disabled = currentPage >= totalPages;
+
+    if (previewVisible) renderVisibleCharts();
+}
+
+// ─── Filtri ───────────────────────────────────────────────────────────────────
+let currentQuickFilter = 'all';
+
+function filterResults(filter, btn) {
+    currentQuickFilter = filter;
+    document.querySelectorAll('.btn-group .btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    applyThresholdFilter();
+}
+
+function applyThresholdFilter() {
+    const chi2 = parseFloat(document.getElementById('filterChi2').value) || 0;
+    const hideRejected = document.getElementById('hideRejected').checked;
+    const hideDuplicates = document.getElementById('hideDuplicates') ? document.getElementById('hideDuplicates').checked : true;
+
+    filteredRows = [];
+    document.querySelectorAll('.result-row').forEach(row => {
+        let visible = true;
+        if (currentQuickFilter === 'candidate') visible = row.dataset.isCandidate === 'true';
+        else if (currentQuickFilter === 'valid') visible = row.dataset.isValid === 'true';
+        else if (currentQuickFilter === 'duplicate') visible = row.dataset.isDuplicate === 'true';
+        if (visible && chi2 > 0) visible = parseFloat(row.dataset.chi2) > chi2;
+        if (visible && hideRejected) visible = row.dataset.isRejected !== 'true';
+        if (visible && hideDuplicates) visible = row.dataset.isDuplicate !== 'true';
+        if (visible) filteredRows.push(row);
+        else row.style.display = 'none';
+    });
+
+    currentPage = 1;
+    renderPage();
+    const badge = document.getElementById('thresholdMatchCount');
+    if (badge) badge.textContent = filteredRows.length + ' righe';
+}
+
+// ─── Rifiuta/Annulla stella ───────────────────────────────────────────────────
+async function toggleReject(btn) {
+    const resultId = btn.dataset.resultId;
+    btn.disabled = true;
+    try {
+        const r = await fetch(`/agata/admin/api/ztf-survey/results/${resultId}/reject`, { method: 'POST' });
+        const data = await r.json();
+        if (data.success) {
+            const row = btn.closest('tr');
+            row.dataset.isRejected = data.is_rejected ? 'true' : 'false';
+            row.classList.toggle('table-danger', data.is_rejected);
+            row.classList.toggle('opacity-50', data.is_rejected);
+            btn.dataset.rejected = data.is_rejected ? 'true' : 'false';
+            btn.textContent = data.is_rejected ? '↩ Annulla' : '✕ Rifiuta';
+            btn.title = data.is_rejected ? 'Annulla rifiuto' : 'Rifiuta stella';
+            applyThresholdFilter();
+        }
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// ─── Selezione massiva ────────────────────────────────────────────────────────
+function selectAllRows() {
+    const checked = document.getElementById('selectAllCheckbox').checked;
+    document.querySelectorAll('.result-checkbox:not([disabled])').forEach(cb => {
+        cb.checked = checked;
+    });
+}
+function toggleSelectAll() {
+    const sel = document.getElementById('selectAllCheckbox');
+    sel.checked = !sel.checked;
+    selectAllRows();
+}
+function getSelectedIds() {
+    const checked = [...document.querySelectorAll('.result-checkbox:checked')];
+    return checked.length > 0 ? checked.map(cb => parseInt(cb.value)) : null;
+}
+
+// ─── Promozione con polling progresso ─────────────────────────────────────────
+function promoteSelected() {
+    const ids = getSelectedIds();
+    if (!ids || ids.length === 0) { alert('Seleziona almeno una sorgente.'); return; }
+    doPromotion(ids);
+}
+function promoteAll() {
+    if (!confirm(`Promuovere TUTTE le sorgenti valide del job ${JOB_CODE}?\n\nPer ogni stella verrà scaricata la curva di luce da IRSA (~5s ciascuna).`)) return;
+    doPromotion(null);
+}
+
+async function doPromotion(resultIds) {
+    const excludeKnown = document.getElementById('excludeKnownVariables').checked;
+    const excludeInAgata = document.getElementById('excludeInAgata').checked;
+    const progressDiv = document.getElementById('promotionProgress');
+    const resultDiv = document.getElementById('promotionResult');
+    const btn1 = document.getElementById('promoteSelectedBtn');
+    const btn2 = document.getElementById('promoteAllBtn');
+
+    btn1.disabled = true;
+    btn2.disabled = true;
+    progressDiv.style.display = 'block';
+    resultDiv.style.display = 'none';
+
+    const body = { exclude_known_variables: excludeKnown, exclude_in_agata: excludeInAgata };
+    if (resultIds) body.result_ids = resultIds;
+
+    // Avvia promozione (risponde subito 202)
+    try {
+        const resp = await fetch(`/agata/admin/api/ztf-survey/jobs/${JOB_ID}/promote`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await resp.json();
+        if (!data.success) {
+            progressDiv.style.display = 'none';
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> ${data.error}</div>`;
+            btn1.disabled = false; btn2.disabled = false;
+            return;
+        }
+    } catch (err) {
+        progressDiv.style.display = 'none';
+        resultDiv.style.display = 'block';
+        resultDiv.innerHTML = `<div class="alert alert-danger">Errore di rete: ${err}</div>`;
+        btn1.disabled = false; btn2.disabled = false;
+        return;
+    }
+
+    // Polling stato ogni 3s
+    let pollStaleCount = 0;
+    const pollPromo = setInterval(async () => {
+        try {
+            const r = await fetch(`/agata/admin/api/ztf-survey/jobs/${JOB_ID}/promote/status`);
+            const s = await r.json();
+
+            // Se idle/running senza progressi per >90s: thread probabilmente morto
+            if (s.state === 'idle' || s.state === undefined || (s.state === 'running' && s.total === 0)) {
+                pollStaleCount++;
+                if (pollStaleCount >= 30) {  // 90s
+                    clearInterval(pollPromo);
+                    progressDiv.style.display = 'none';
+                    btn1.disabled = false; btn2.disabled = false;
+                    resultDiv.style.display = 'block';
+                    resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> Timeout: nessuna risposta dal server. Controlla i log e riprova.</div>`;
+                }
+                return;
+            }
+            pollStaleCount = 0;
+
+            const pct = s.total > 0 ? Math.round(s.promoted / s.total * 100) : 0;
+            document.getElementById('promoProgressBar').style.width = pct + '%';
+            document.getElementById('promoProgressBar').textContent = pct + '%';
+            document.getElementById('promoCountText').textContent = `${s.promoted} / ${s.total} stelle`;
+            document.getElementById('promoStatusText').innerHTML =
+                `<i class="fas fa-spinner fa-spin me-1"></i> Download LC da IRSA... (${s.promoted}/${s.total})`;
+
+            if (s.state === 'completed' || s.state === 'failed') {
+                clearInterval(pollPromo);
+                progressDiv.style.display = 'none';
+                btn1.disabled = false; btn2.disabled = false;
+
+                resultDiv.style.display = 'block';
+                if (s.state === 'completed') {
+                    let html = `<div class="alert alert-success">
+                        <h6><i class="fas fa-check-circle"></i> Promozione completata!</h6>
+                        <ul class="mb-2">
+                            <li><strong>${s.promoted}</strong> stelle promosse</li>
+                            <li><strong>${s.lightcurve_points}</strong> punti fotometrici importati</li>
+                            ${s.errors && s.errors.length > 0 ? `<li class="text-danger">${s.errors.length} errori</li>` : ''}
+                        </ul>`;
+                    if (s.catalog_link) {
+                        html += `<a href="${s.catalog_link}" class="btn btn-primary" target="_blank">
+                            <i class="fas fa-chart-line"></i> Visualizza grafici in Stars Catalog
+                        </a>`;
+                    }
+                    html += '</div>';
+                    resultDiv.innerHTML = html;
+                    if (s.promoted > 0) {
+                        // Salva il messaggio in sessionStorage prima del reload
+                        sessionStorage.setItem('promotionMessage', JSON.stringify({
+                            type: 'success',
+                            promoted: s.promoted,
+                            points: s.lightcurve_points,
+                            catalogLink: s.catalog_link
+                        }));
+                        setTimeout(() => location.reload(), 3000);
+                    }
+                } else {
+                    resultDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-times"></i> Promozione fallita.</div>`;
+                }
+            }
+        } catch (e) { console.warn('Poll promozione error:', e); }
+    }, 3000);
+}
+
+// Elimina job e tutti i dati relativi
+async function deleteJob(jobId) {
+    if (!confirm('⚠️ Eliminare questo job e TUTTI i dati fotometrici relativi?\n\nQuesta azione NON è reversibile.')) {
+        return;
+    }
+
+    const btn = event.target.closest('button');
+    const originalHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Eliminando...';
+
+    try {
+        const resp = await fetch(`/agata/admin/api/ztf-survey/jobs/${jobId}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await resp.json();
+
+        if (data.success) {
+            // Mostra alert di successo e reindirizza
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+            alert.style.zIndex = '9999';
+            alert.innerHTML = `
+                <i class="fas fa-check-circle"></i>
+                <strong>Job eliminato!</strong> ${data.message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alert);
+
+            // Reindirizza a lista dopo 1.5s
+            setTimeout(() => {
+                window.location.href = '/agata/admin/ztf-survey/jobs';
+            }, 1500);
+        } else {
+            alert('❌ Errore: ' + data.error);
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    } catch (err) {
+        alert('❌ Errore di rete: ' + err);
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+    }
+}
+
+// Inizializza filtri e paginazione al caricamento
+applyThresholdFilter();
+
+// Auto-refresh se il job è in esecuzione
+{% if job.is_running %}
+const pollInterval = setInterval(async function() {
+    try {
+        const resp = await fetch(`/agata/admin/api/ztf-survey/jobs/${JOB_ID}`);
+        const data = await resp.json();
+
+        // Aggiorna progress bar
+        const bar = document.getElementById('progressBar');
+        if (bar) {
+            bar.style.width = data.progress_pct + '%';
+            bar.textContent = data.progress_pct + '%';
+            bar.setAttribute('aria-valuenow', data.progress_pct);
+        }
+
+        // Aggiorna step corrente
+        const stepDiv = document.getElementById('currentStep') || document.getElementById('currentStepRunning');
+        if (stepDiv && data.current_step) {
+            stepDiv.textContent = data.current_step;
+        }
+
+        // Se completato o fallito: ricarica pagina
+        if (['completed', 'failed', 'cancelled'].includes(data.state)) {
+            clearInterval(pollInterval);
+            setTimeout(() => location.reload(), 1000);
+        }
+    } catch (e) {
+        console.warn('Polling error:', e);
+    }
+}, 5000);
+{% endif %}
+</script>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('admin.static', filename='vendor/plotly/plotly-2.30.0.min.js') }}"></script>
+{% endblock %}

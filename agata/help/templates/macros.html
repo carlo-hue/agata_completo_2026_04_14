@@ -1,0 +1,304 @@
+{#
+  Help System Macros
+  ------------------
+  Utilizzo in qualsiasi template:
+
+    Importa le macro:
+      from 'macros.html' import help_button, help_offcanvas
+
+    Bottone ? che apre il pannello laterale:
+      call help_button('editor.overview')
+      call help_button('editor.light_curves', label='Aiuto')
+
+    Includere UNA SOLA VOLTA per pagina, prima di </body>:
+      call help_offcanvas()
+#}
+
+{% macro help_button(help_id, label='', size='sm') %}
+<button
+  type="button"
+  class="btn btn-outline-secondary btn-{{ size }} help-trigger"
+  data-help-id="{{ help_id }}"
+  title="Apri guida"
+  onclick="openHelpPanel('{{ help_id }}')"
+  style="padding: 0.15rem 0.5rem; font-size: 0.8rem; line-height: 1.4; vertical-align: middle;">
+  <i class="bi bi-question-circle"></i>{% if label %}<span class="ms-1">{{ label }}</span>{% endif %}
+</button>
+{% endmacro %}
+
+
+{% macro help_offcanvas(can_edit=False) %}
+<!-- ═══════════════════════════════════════════════════════
+     Help Offcanvas Panel
+     Incluso automaticamente da admin/base.html e variable_stars/index.html
+     ═══════════════════════════════════════════════════════ -->
+
+{# Stili offcanvas autonomi: funzionano anche senza Bootstrap CSS caricato (es. editor) #}
+<style>
+/* Quando il pannello help è aperto, la main area si restringe per non essere coperta */
+body.help-panel-open main,
+body.help-panel-open .main-content {
+  margin-right: 520px;
+  transition: margin-right .3s ease-in-out;
+}
+main,
+.main-content {
+  transition: margin-right .3s ease-in-out;
+}
+
+#helpOffcanvas {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 520px;
+  max-width: 100vw;
+  background: #fff;
+  border-left: 1px solid rgba(0,0,0,.2);
+  box-shadow: -0.5rem 0 1rem rgba(0,0,0,.15);
+  display: flex;
+  flex-direction: column;
+  z-index: 1045;
+  visibility: hidden;
+  transform: translateX(100%);
+  transition: transform .3s ease-in-out, visibility .3s ease-in-out;
+}
+#helpOffcanvas.show {
+  visibility: visible;
+  transform: translateX(0);
+}
+.offcanvas-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #dee2e6;
+  flex-shrink: 0;
+}
+.offcanvas-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.offcanvas-body {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding: 1rem;
+}
+</style>
+
+<div id="helpOffcanvas" tabindex="-1">
+  <!-- Header view mode -->
+  <div id="helpHeader-view" style="display:flex;align-items:center;justify-content:space-between;padding:0.6rem 1rem;border-bottom:1px solid #dee2e6;flex-shrink:0;background:#fff;">
+    <h6 style="margin:0;font-size:0.95rem;font-weight:600;display:flex;align-items:center;gap:0.4rem;">
+      <i class="bi bi-question-circle" style="color:#0d6efd;"></i>
+      <span id="helpPanelTitle">Aiuto</span>
+    </h6>
+    <div style="display:flex;align-items:center;gap:0.4rem;">
+      <a id="helpFullPageLink" href="#" target="_blank"
+         style="font-size:0.8rem;color:#6c757d;text-decoration:none;padding:0.2rem 0.4rem;border:1px solid #dee2e6;border-radius:4px;"
+         title="Apri pagina intera">
+        <i class="bi bi-box-arrow-up-right"></i>
+      </a>
+      {% if can_edit %}
+      <button id="helpEditBtn" type="button" onclick="enterHelpEditMode()"
+              style="font-size:0.8rem;color:#6c757d;background:none;border:1px solid #dee2e6;border-radius:4px;padding:0.2rem 0.4rem;cursor:pointer;"
+              title="Modifica articolo">
+        <i class="bi bi-pencil"></i>
+      </button>
+      {% endif %}
+      <button type="button" data-help-close aria-label="Chiudi"
+              style="background:none;border:0;font-size:1.25rem;cursor:pointer;line-height:1;padding:0.2rem 0.5rem;color:#6c757d;">✕</button>
+    </div>
+  </div>
+  <!-- Header edit mode (nascosto di default) -->
+  <div id="helpHeader-edit" style="display:none;align-items:center;justify-content:space-between;padding:0.6rem 1rem;border-bottom:1px solid #dee2e6;flex-shrink:0;background:#fff3cd;">
+    <h6 style="margin:0;font-size:0.95rem;font-weight:600;display:flex;align-items:center;gap:0.4rem;">
+      <i class="bi bi-pencil" style="color:#856404;"></i>
+      <span style="color:#856404;">Modifica articolo</span>
+    </h6>
+    <div style="display:flex;align-items:center;gap:0.4rem;">
+      <button id="helpSaveBtn" type="button" onclick="saveHelpArticle()"
+              style="font-size:0.8rem;color:#fff;background:#0d6efd;border:none;border-radius:4px;padding:0.25rem 0.65rem;cursor:pointer;font-weight:600;">
+        <i class="bi bi-floppy"></i> Salva
+      </button>
+      <button type="button" onclick="exitHelpEditMode()"
+              style="font-size:0.8rem;color:#6c757d;background:none;border:1px solid #dee2e6;border-radius:4px;padding:0.25rem 0.5rem;cursor:pointer;">
+        Annulla
+      </button>
+    </div>
+  </div>
+  <div id="helpPanelBody" style="flex-grow:1;overflow-y:auto;padding:0;"></div>
+</div>
+
+<script>
+(function () {
+  var _panel = null;
+
+  function getPanel() {
+    if (!_panel) _panel = document.getElementById('helpOffcanvas');
+    return _panel;
+  }
+
+  function showPanel() {
+    var el = getPanel();
+    if (el) el.classList.add('show');
+    document.body.classList.add('help-panel-open');
+  }
+
+  function hidePanel() {
+    var el = getPanel();
+    if (el) el.classList.remove('show');
+    document.body.classList.remove('help-panel-open');
+  }
+
+  var _currentHelpId = null;
+  var _currentRaw = null;
+
+  window.openHelpPanel = function (helpId) {
+    // Reset edit mode UI senza ricaricare (evita loop)
+    var hv = document.getElementById('helpHeader-view');
+    var he = document.getElementById('helpHeader-edit');
+    if (hv) hv.style.display = 'flex';
+    if (he) he.style.display = 'none';
+    showPanel();
+    _currentHelpId = helpId;
+    _currentRaw = null;
+
+    var fullLink = document.getElementById('helpFullPageLink');
+    if (fullLink) fullLink.href = '/agata/help/article/' + helpId;
+
+    var body  = document.getElementById('helpPanelBody');
+    var title = document.getElementById('helpPanelTitle');
+    if (title) title.textContent = 'Caricamento...';
+    if (body) body.innerHTML =
+      '<div style="text-align:center;color:#6c757d;padding:2.5rem 1rem">' +
+      '<div style="font-size:0.85rem">Caricamento...</div></div>';
+
+    fetch('/agata/help/api/article/' + encodeURIComponent(helpId))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.error) {
+          if (title) title.textContent = 'Articolo non trovato';
+          if (body) body.innerHTML =
+            '<div style="padding:1rem">' +
+            '<div style="background:#fff3cd;border:1px solid #ffc107;border-radius:4px;padding:0.75rem;margin-bottom:0.75rem">' +
+            '<i class="bi bi-exclamation-triangle"></i> Articolo non disponibile per questa sezione.</div>' +
+            '<a href="/agata/help/" style="font-size:0.85rem"><i class="bi bi-book"></i> Centro Aiuto</a></div>';
+          return;
+        }
+        _currentRaw = data.raw || '';
+        if (title) title.textContent = data.title;
+        if (body) body.innerHTML =
+          '<div class="help-content" style="padding:1rem">' + data.html + '</div>';
+      })
+      .catch(function () {
+        if (title) title.textContent = 'Errore';
+        if (body) body.innerHTML =
+          '<div style="padding:1rem;color:#dc3545">Impossibile caricare l\'articolo.</div>';
+      });
+  };
+
+  window.enterHelpEditMode = function () {
+    if (!_currentHelpId) return;
+    var headerView = document.getElementById('helpHeader-view');
+    var headerEdit = document.getElementById('helpHeader-edit');
+    var body = document.getElementById('helpPanelBody');
+    if (headerView) headerView.style.display = 'none';
+    if (headerEdit) headerEdit.style.display = 'flex';
+    if (body) body.innerHTML =
+      '<textarea id="helpEditTextarea" spellcheck="false" style="' +
+      'width:100%;height:100%;box-sizing:border-box;padding:1rem;' +
+      'font-family:monospace;font-size:0.82rem;line-height:1.5;' +
+      'border:none;outline:none;resize:none;background:#fafafa;">' +
+      _escapeHtml(_currentRaw || '') + '</textarea>';
+  };
+
+  window.exitHelpEditMode = function () {
+    var headerEdit = document.getElementById('helpHeader-edit');
+    var wasEditing = headerEdit && headerEdit.style.display !== 'none';
+    if (!wasEditing) return;
+    // Ricarica articolo corrente (questo resetterà anche gli header)
+    if (_currentHelpId) window.openHelpPanel(_currentHelpId);
+  };
+
+  window.saveHelpArticle = function () {
+    var textarea = document.getElementById('helpEditTextarea');
+    if (!textarea || !_currentHelpId) return;
+    var content = textarea.value.trim();
+    if (!content) return;
+
+    var saveBtn = document.getElementById('helpSaveBtn');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Salvo...'; }
+
+    fetch('/agata/help/api/article/' + encodeURIComponent(_currentHelpId), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: content })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i class="bi bi-floppy"></i> Salva'; }
+        if (data.error) {
+          alert('Errore: ' + data.error);
+          return;
+        }
+        _currentRaw = content;
+        var headerView = document.getElementById('helpHeader-view');
+        var headerEdit = document.getElementById('helpHeader-edit');
+        var body = document.getElementById('helpPanelBody');
+        var title = document.getElementById('helpPanelTitle');
+        if (headerView) headerView.style.display = 'flex';
+        if (headerEdit) headerEdit.style.display = 'none';
+        if (title) title.textContent = data.title;
+        if (body) body.innerHTML = '<div class="help-content" style="padding:1rem">' + data.html + '</div>';
+      })
+      .catch(function (e) {
+        if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '<i class="bi bi-floppy"></i> Salva'; }
+        alert('Errore di rete: ' + e);
+      });
+  };
+
+  function _escapeHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // Chiudi cliccando fuori dal pannello (ma non durante il tutorial)
+  document.addEventListener('click', function (e) {
+    var el = getPanel();
+    if (!el || !el.classList.contains('show')) return;
+    // Se il tutorial è attivo, non chiudere il pannello cliccando fuori
+    var ribbon = document.getElementById('tutorial-ribbon');
+    if (ribbon && ribbon.style.display !== 'none') return;
+    if (!el.contains(e.target) && !e.target.closest('.help-trigger')) {
+      hidePanel();
+    }
+  });
+
+  // Pulsante chiudi nel pannello
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('#helpOffcanvas [data-help-close]')) {
+      hidePanel();
+    }
+  });
+}());
+</script>
+
+<style>
+.help-content { font-size: 0.9rem; line-height: 1.6; }
+.help-content h2 { font-size: 1.15rem; margin-top: 1.25rem; border-bottom: 1px solid #dee2e6; padding-bottom: 0.35rem; }
+.help-content h3 { font-size: 1rem; margin-top: 1rem; font-weight: 600; }
+.help-content h4 { font-size: 0.95rem; margin-top: 0.75rem; font-weight: 600; }
+.help-content pre { background: #f8f9fa; border-radius: 6px; padding: 0.75rem 1rem; font-size: 0.82rem; overflow-x: auto; }
+.help-content code { background: #f0f0f0; padding: 0.1em 0.35em; border-radius: 3px; font-size: 0.85em; }
+.help-content pre code { background: none; padding: 0; }
+.help-content table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; font-size: 0.85rem; }
+.help-content th { background: #f8f9fa; font-weight: 600; }
+.help-content th, .help-content td { border: 1px solid #dee2e6; padding: 0.4rem 0.6rem; }
+.help-content img { max-width: 100%; border-radius: 6px; margin: 0.5rem 0; }
+.help-content iframe { max-width: 100%; border-radius: 6px; margin: 0.5rem 0; }
+.help-content blockquote { border-left: 3px solid #0d6efd; padding-left: 0.75rem; color: #495057; margin: 0.75rem 0; }
+.help-content ul, .help-content ol { padding-left: 1.5rem; }
+.help-content li { margin-bottom: 0.2rem; }
+</style>
+{% endmacro %}

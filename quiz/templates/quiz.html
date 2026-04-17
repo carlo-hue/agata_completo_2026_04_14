@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quiz di AstroGen</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="quiz-container">
+        <h1>Benvenuto al Quiz AstroGen!</h1>
+        <form method="POST">
+          <label for="user_name">Il tuo nome (verrà usato per il diploma):</label><br>
+		  <input type="text" id="user_name" name="user_name" required><br><br>
+            {% for i, q in enumerate(questions) %}
+            <div class="question">
+                <h2>{{ q['question'] }}</h2>
+                <div class="options">
+                    {% for option in q['options'] %}
+                    <label>
+                        <input type="radio" name="q{{ i }}" value="{{ option }}">
+                        {{ option }}
+                    </label><br>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+            <button type="submit">Invia Risposte</button>
+        </form>
+    </div>
+</body>
+</html>

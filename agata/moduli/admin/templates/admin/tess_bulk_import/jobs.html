@@ -1,0 +1,827 @@
+{% extends "admin/base.html" %}
+{% from 'macros.html' import help_button %}
+
+{% block title %}TESS Bulk Import Pipeline{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1><i class="fas fa-satellite"></i> TESS Bulk Import Pipeline {{ help_button('admin.tess_bulk_import') }}</h1>
+            <p class="text-muted mb-0">Import massivo curve di luce TESS QLP da curl script MAST</p>
+        </div>
+        <button class="btn btn-primary btn-lg" data-bs-toggle="modal" data-bs-target="#createJobModal">
+            <i class="fas fa-upload"></i> Nuovo Import
+        </button>
+    </div>
+
+    <!-- Script Library Card (NEW) -->
+    <div class="card mb-4">
+        <div class="card-header bg-light">
+            <div class="row align-items-center">
+                <div class="col">
+                    <h5 class="mb-0"><i class="fas fa-folder-open"></i> Script MAST Salvati</h5>
+                </div>
+                <div class="col-auto">
+                    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadScriptModal">
+                        <i class="fas fa-upload"></i> Carica Script (.sh, .zip, .7z)
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div id="scriptListContainer">
+                <div class="text-center p-4">
+                    <i class="fas fa-spinner fa-spin"></i> Caricamento script...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Job List Card -->
+    <div class="card">
+        <div class="card-header bg-light">
+            <div class="row align-items-center">
+                <div class="col">
+                    <h5 class="mb-0"><i class="fas fa-list"></i> Import Jobs</h5>
+                </div>
+                <div class="col-auto">
+                    <span class="badge bg-secondary">{{ jobs|length }} job</span>
+                </div>
+            </div>
+        </div>
+        <div class="card-body p-0">
+            {% if jobs %}
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr class="table-light">
+                        <th style="width: 14%">Job Code</th>
+                        <th style="width: 18%">Nome</th>
+                        <th style="width: 18%">Script</th>
+                        <th style="width: 10%">File</th>
+                        <th style="width: 10%">Stato</th>
+                        <th style="width: 10%">Progresso</th>
+                        <th style="width: 12%">Elaborati / Candidati</th>
+                        <th style="width: 8%">Creato</th>
+                        <th style="width: 5%">Azioni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for job in jobs %}
+                    <tr class="{% if job.state == 'failed' %}table-danger{% endif %}">
+                        <td>
+                            <a href="{{ url_for('admin.tess_bulk_import_job_detail', job_id=job.id) }}" class="font-monospace">
+                                <strong>{{ job.job_code }}</strong>
+                            </a>
+                        </td>
+                        <td>{{ job.job_name }}</td>
+                        <td class="small text-muted">
+                            {{ job.curl_script_filename or '—' }}
+                        </td>
+                        <td class="small">
+                            <span class="badge bg-primary">{{ job.files_selected }}</span>
+                            <span class="text-muted">/ {{ job.total_files_in_script }}</span>
+                            <br>
+                            <small class="text-muted">{{ job.selection_strategy }}</small>
+                        </td>
+                        <td>
+                            <span class="badge bg-{{
+                                'success' if job.state == 'completed'
+                                else 'danger' if job.state == 'failed'
+                                else 'warning text-dark' if job.state in ['downloading', 'analyzing']
+                                else 'info' if job.state == 'crossmatching'
+                                else 'secondary' if job.state == 'cancelled'
+                                else 'light text-dark border'
+                            }}">
+                                {% if job.is_running %}<i class="fas fa-spinner fa-spin me-1"></i>{% endif %}
+                                {{ job.state | title }}
+                            </span>
+                        </td>
+                        <td>
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar {{ 'bg-danger' if job.state == 'failed' else 'bg-success' if job.state == 'completed' else '' }}"
+                                     role="progressbar"
+                                     style="width: {{ job.progress_pct }}%"
+                                     aria-valuenow="{{ job.progress_pct }}"
+                                     aria-valuemin="0" aria-valuemax="100">
+                                    <small>{{ job.progress_pct }}%</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="text-center">
+                            <span class="badge bg-secondary me-1" title="File elaborati">{{ job.total_processed }}</span>
+                            <i class="fas fa-arrow-right text-muted small"></i>
+                            <span class="badge bg-warning text-dark ms-1" title="Candidati variabili">{{ job.candidates_found }}</span>
+                        </td>
+                        <td class="small text-muted">{{ job.created_at.strftime('%d/%m %H:%M') }}</td>
+                        <td>
+                            <a href="{{ url_for('admin.tess_bulk_import_job_detail', job_id=job.id) }}"
+                               class="btn btn-sm btn-outline-primary" title="Dettaglio">
+                                <i class="fas fa-eye"></i>
+                            </a>
+                            {% if job.state in ['failed', 'downloading', 'analyzing', 'crossmatching'] and not job.is_running %}
+                            <button class="btn btn-sm btn-outline-warning ms-1"
+                                    onclick="resumeJob({{ job.id }}, '{{ job.job_code }}')"
+                                    title="Riprendi job (salta file già elaborati)">
+                                <i class="fas fa-redo"></i>
+                            </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="alert alert-info m-4 mb-0">
+                <i class="fas fa-info-circle"></i>
+                Nessun import avviato. Clicca <strong>Nuovo Import</strong> per iniziare.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Upload Script Modal (NEW) -->
+<div class="modal fade" id="uploadScriptModal" tabindex="-1" aria-labelledby="uploadScriptModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="uploadScriptModalLabel">
+                    <i class="fas fa-upload"></i> Carica Script MAST
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+            </div>
+
+            <!-- Upload Form (shown during upload) -->
+            <form id="uploadScriptForm">
+                <div class="modal-body">
+                    <div class="alert alert-info small mb-3">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Carica il file .sh da MAST (anche in archivi .zip o .7z). Il sistema lo analizzerà in background e potrai riutilizzarlo per più batch senza riscaricarlo.
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="uploadScriptFile" class="form-label">
+                            File Script <span class="text-danger">*</span>
+                        </label>
+                        <input type="file" class="form-control" id="uploadScriptFile" accept=".sh,.txt,.gz,.zip,.7z" required>
+                        <small class="form-text text-muted">
+                            <strong>Formati supportati:</strong>
+                            <ul class="mb-0 mt-2">
+                                <li>.sh, .txt — testo semplice</li>
+                                <li>.sh.gz, .txt.gz — compresso (consigliato, ~2-5% della dimensione originale)</li>
+                                <li>.zip, .7z — archivi (estrae automaticamente i file .sh/.txt)</li>
+                            </ul>
+                            Supporta file fino a 250 MB. Decomprimi e analizzazione in background.
+                        </small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                    <button type="submit" class="btn btn-primary" id="uploadScriptBtn">
+                        <i class="fas fa-upload"></i> Carica
+                    </button>
+                </div>
+            </form>
+
+            <!-- Parsing Status (shown during parsing) -->
+            <div id="parsingStatus" style="display: none;">
+                <div class="modal-body text-center py-5">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p id="parsingStatusText" class="text-muted mb-0">
+                        Analizzando lo script MAST...
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Batch Modal (NEW) -->
+<div class="modal fade" id="createBatchModal" tabindex="-1" aria-labelledby="createBatchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title" id="createBatchModalLabel">
+                    <i class="fas fa-plus"></i> Crea Nuovo Batch
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+            </div>
+
+            <form id="createBatchForm">
+                <div class="modal-body">
+                    <div class="alert alert-success small mb-3">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Crea un nuovo job batch da uno script già caricato. Nessun re-upload necessario.
+                    </div>
+
+                    <!-- Script info (read-only) -->
+                    <div class="mb-3">
+                        <label class="form-label">Script</label>
+                        <div class="form-control-plaintext">
+                            <code><strong id="batchScriptName">—</strong></code>
+                        </div>
+                        <input type="hidden" id="batchScriptId">
+                    </div>
+
+                    <!-- Job name -->
+                    <div class="mb-3">
+                        <label for="batchJobName" class="form-label">
+                            Nome job <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="batchJobName" required>
+                        <small class="form-text text-muted">Auto-suggerito. Puoi modificare.</small>
+                    </div>
+
+                    <!-- Offset (auto-filled, editable) -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="batchOffset" class="form-label">
+                                Offset (record di partenza) <span class="text-danger">*</span>
+                            </label>
+                            <input type="number" class="form-control" id="batchOffset" min="0" required>
+                            <small class="form-text text-muted">
+                                Suggerito: ultimo record caricato. Modificabile.
+                            </small>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="batchFilesSelected" class="form-label">
+                                N° entry <span class="text-danger">*</span>
+                            </label>
+                            <input type="number" class="form-control" id="batchFilesSelected" min="1" max="500" required>
+                            <small class="form-text text-muted">Default: 500</small>
+                        </div>
+                    </div>
+
+                    <!-- Preview -->
+                    <div class="mb-3">
+                        <label class="form-label">Preview (prime 5 entry)</label>
+                        <div class="border rounded p-2" style="background: #f8f9fa; max-height: 120px; overflow-y: auto;">
+                            <div id="batchPreview" class="small font-monospace" style="color: #666;">
+                                Caricamento preview...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                    <button type="submit" class="btn btn-success" id="createBatchBtn">
+                        <i class="fas fa-rocket"></i> Crea Batch
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Create Job Modal (LEGACY - multipart upload) -->
+<div class="modal fade" id="createJobModal" tabindex="-1" aria-labelledby="createJobModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="createJobModalLabel">
+                    <i class="fas fa-upload"></i> Nuovo TESS Bulk Import
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+            </div>
+            <form id="tess-import-form" enctype="multipart/form-data">
+                <div class="modal-body">
+                    <div class="alert alert-info small mb-3">
+                        <i class="fas fa-info-circle me-1"></i>
+                        Carica il curl script scaricato da MAST (file .sh o .txt). Il sistema analizzerà le stelle
+                        selezionate, calcolerà gli indici di variabilità e identificherà le candidate variabili
+                        tramite cross-match VSX, ATLAS e Gaia.<br>
+                        <strong>Limite:</strong> max 500 file per job.
+                    </div>
+
+                    <!-- Nome job -->
+                    <div class="mb-3">
+                        <label for="jobName" class="form-label">
+                            Nome job <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="jobName" name="job_name"
+                               placeholder="es. TESS Sector 84 - Campo Orione"
+                               required>
+                        <small class="form-text text-muted">Nome descrittivo per identificare questo import</small>
+                    </div>
+
+                    <!-- Upload curl script -->
+                    <div class="mb-3">
+                        <label for="curlScript" class="form-label">
+                            Curl script MAST <span class="text-danger">*</span>
+                        </label>
+                        <input type="file" class="form-control" id="curlScript" name="curl_script"
+                               accept=".sh,.txt" required>
+                        <small class="form-text text-muted">File .sh o .txt scaricato dalla pagina download di MAST</small>
+                    </div>
+
+                    <!-- Preview script (appare dopo il file upload) -->
+                    <div id="scriptPreview" class="alert alert-secondary py-2 small mb-3" style="display:none;">
+                        <i class="fas fa-file-code me-1"></i>
+                        <span id="scriptPreviewText">Caricamento...</span>
+                        <div id="scriptPreviewEntries" class="mt-1 font-monospace" style="font-size:0.75rem; max-height:80px; overflow-y:auto;"></div>
+                    </div>
+
+                    <!-- Selezione N file e strategia -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="filesSelected" class="form-label">
+                                N file da elaborare <span class="text-danger">*</span>
+                            </label>
+                            <input type="number" class="form-control" id="filesSelected" name="files_selected"
+                                   min="1" max="500" value="100" required>
+                            <small class="form-text text-muted">Max 500. Default: 100 o tutti se meno disponibili.</small>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="selectionStrategy" class="form-label">Strategia selezione</label>
+                            <select class="form-select" id="selectionStrategy" name="selection_strategy">
+                                <option value="first_n" selected>first_n — Prendi i primi N</option>
+                                <option value="random_n">random_n — Campione casuale</option>
+                            </select>
+                        </div>
+                    </div>
+
+</div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                    <button type="submit" class="btn btn-primary" id="submit-import-btn">
+                        <i class="fas fa-rocket"></i> Avvia Import
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Preview script al cambio file
+document.getElementById('curlScript').addEventListener('change', async function() {
+    const file = this.files[0];
+    if (!file) return;
+
+    const preview = document.getElementById('scriptPreview');
+    const previewText = document.getElementById('scriptPreviewText');
+    const previewEntries = document.getElementById('scriptPreviewEntries');
+    preview.style.display = 'block';
+    previewText.textContent = 'Analisi script in corso...';
+    previewEntries.textContent = '';
+
+    const fd = new FormData();
+    fd.append('curl_script', file);
+
+    try {
+        const resp = await fetch('/agata/admin/api/tess-bulk-import/parse-script', {
+            method: 'POST',
+            body: fd
+        });
+        const data = await resp.json();
+
+        if (data.success) {
+            const n = data.total_files;
+            previewText.innerHTML = `<strong>Trovati ${n} file FITS</strong> nel curl script.`;
+
+            // Aggiorna valore N file con min(100, n)
+            const filesInput = document.getElementById('filesSelected');
+            filesInput.max = Math.min(n, 500);
+            filesInput.value = Math.min(100, n);
+
+            // Mostra prime entry
+            if (data.first_entries && data.first_entries.length > 0) {
+                previewEntries.innerHTML = data.first_entries.map(e =>
+                    `TIC ${e.tic_id} | Sector ${e.sector} | ${e.path}`
+                ).join('<br>');
+            }
+
+            preview.className = 'alert alert-success py-2 small mb-3';
+        } else {
+            previewText.textContent = 'Errore analisi: ' + data.error;
+            preview.className = 'alert alert-danger py-2 small mb-3';
+        }
+    } catch (err) {
+        previewText.textContent = 'Errore rete: ' + err;
+        preview.className = 'alert alert-danger py-2 small mb-3';
+    }
+});
+
+// Submit form (multipart/form-data)
+document.getElementById('tess-import-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const form = e.target;
+    const jobName = document.getElementById('jobName').value.trim();
+    const curlFile = document.getElementById('curlScript').files[0];
+    const filesSelected = parseInt(document.getElementById('filesSelected').value);
+
+    if (!jobName) {
+        alert('Inserisci un nome per il job');
+        return;
+    }
+    if (!curlFile) {
+        alert('Seleziona un curl script MAST da caricare');
+        return;
+    }
+    if (isNaN(filesSelected) || filesSelected < 1 || filesSelected > 500) {
+        alert('N file deve essere tra 1 e 500');
+        return;
+    }
+
+    const btn = document.getElementById('submit-import-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creazione in corso...';
+
+    const fd = new FormData(form);
+
+    try {
+        const response = await fetch('/agata/admin/api/tess-bulk-import/jobs', {
+            method: 'POST',
+            body: fd
+        });
+        const result = await response.json();
+
+        if (result.success) {
+            bootstrap.Modal.getInstance(document.getElementById('createJobModal')).hide();
+            form.reset();
+            document.getElementById('scriptPreview').style.display = 'none';
+
+            const alertEl = document.createElement('div');
+            alertEl.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+            alertEl.style.zIndex = '9999';
+            alertEl.innerHTML = `
+                <i class="fas fa-check-circle"></i>
+                <strong>Import avviato!</strong> Job <code>${result.job_code}</code> in esecuzione
+                (${result.files_selected} su ${result.total_files_in_script} file).
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alertEl);
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            alert('Errore: ' + result.error);
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-rocket"></i> Avvia Import';
+        }
+    } catch (error) {
+        alert('Errore di rete: ' + error);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-rocket"></i> Avvia Import';
+    }
+});
+
+// Auto-refresh se ci sono job in corso (ma NON se finestre modali sono aperte)
+(function() {
+    setInterval(() => {
+        // Check if any modal is currently open
+        const hasOpenModal = document.querySelectorAll('.modal.show').length > 0;
+
+        // Check if there are running jobs
+        const hasRunning = document.querySelectorAll('.fa-spinner').length > 0;
+
+        // Only reload if there are running jobs AND no modals open
+        if (hasRunning && !hasOpenModal) {
+            location.reload();
+        }
+    }, 5000); // Check every 5 seconds
+})();
+
+async function resumeJob(jobId, jobCode) {
+    if (!confirm(`Riprendere il job ${jobCode}?\n\nI file già elaborati verranno saltati.\nI cross-match verranno rieseguiti su tutti i risultati.`)) {
+        return;
+    }
+    try {
+        const resp = await fetch(`/agata/admin/api/tess-bulk-import/jobs/${jobId}/resume`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+        const data = await resp.json();
+        if (data.success) {
+            const alertEl = document.createElement('div');
+            alertEl.className = 'alert alert-warning alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+            alertEl.style.zIndex = '9999';
+            alertEl.innerHTML = `
+                <i class="fas fa-redo"></i>
+                <strong>Job ripreso!</strong> <code>${data.job_code}</code> in esecuzione.
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alertEl);
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            alert('Errore ripresa: ' + data.error);
+        }
+    } catch (err) {
+        alert('Errore di rete: ' + err);
+    }
+}
+
+// ============================================================================
+// SCRIPT LIBRARY FUNCTIONS
+// ============================================================================
+
+// Load and display script library on page load
+async function loadScriptLibrary() {
+    try {
+        const resp = await fetch('/agata/admin/api/tess-bulk-import/scripts');
+        const data = await resp.json();
+
+        if (!data.scripts || data.scripts.length === 0) {
+            document.getElementById('scriptListContainer').innerHTML = `
+                <div class="alert alert-info m-3 mb-0">
+                    <i class="fas fa-info-circle"></i> Nessun script caricato.
+                    Usa <strong>Carica Nuovo Script .sh</strong> per iniziare.
+                </div>
+            `;
+            return;
+        }
+
+        let html = '<table class="table table-sm mb-0">';
+        for (const script of data.scripts) {
+            const remaining = script.total_entries - script.entries_processed;
+            const pct = script.total_entries > 0 ? Math.round((script.entries_processed / script.total_entries) * 100) : 0;
+            const statusBadge = script.parse_state === 'ready' ? 'bg-success' :
+                               script.parse_state === 'failed' ? 'bg-danger' :
+                               'bg-warning text-dark';
+
+            html += `
+                <tr>
+                    <td style="width: 40%;">
+                        <div class="font-monospace small"><strong>${script.original_filename}</strong></div>
+                        <div class="text-muted small">${script.script_code}</div>
+                    </td>
+                    <td style="width: 35%;">
+                        <div class="small mb-1">
+                            <span class="badge bg-secondary">${script.total_entries}</span> entry |
+                            <span class="badge bg-info">${script.entries_processed}</span> processate |
+                            <span class="badge bg-light text-dark">${remaining}</span> rimanenti
+                        </div>
+                        <div class="progress" style="height: 16px;">
+                            <div class="progress-bar bg-success" style="width: ${pct}%;" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100">
+                                <small>${pct}%</small>
+                            </div>
+                        </div>
+                        <small class="text-muted">~${script.batches_remaining} batch di 500 rimanenti</small>
+                    </td>
+                    <td style="width: 25%;" class="text-end">
+                        <span class="badge ${statusBadge}">${script.parse_state}</span>
+                        ${script.parse_state === 'ready' ? `
+                            <button class="btn btn-sm btn-success ms-2" onclick="openCreateBatchModal(${script.id}, '${script.original_filename}')" title="Crea nuovo batch da questo script">
+                                <i class="fas fa-plus"></i> Crea Batch
+                            </button>
+                            <button class="btn btn-sm btn-danger ms-1" onclick="deleteScript(${script.id})" title="Elimina script e tutti i dati">
+                                <i class="fas fa-times-circle"></i> Elimina
+                            </button>
+                        ` : ''}
+                    </td>
+                </tr>
+            `;
+        }
+        html += '</table>';
+        document.getElementById('scriptListContainer').innerHTML = html;
+    } catch (err) {
+        document.getElementById('scriptListContainer').innerHTML = `
+            <div class="alert alert-danger m-3 mb-0">
+                <i class="fas fa-exclamation-circle"></i> Errore caricamento script: ${err}
+            </div>
+        `;
+    }
+}
+
+// Upload script modal
+document.getElementById('uploadScriptForm')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const file = document.getElementById('uploadScriptFile').files[0];
+    if (!file) {
+        alert('Seleziona un file .sh');
+        return;
+    }
+
+    const btn = document.getElementById('uploadScriptBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Caricamento...';
+
+    const fd = new FormData();
+    fd.append('curl_script', file);
+
+    try {
+        const resp = await fetch('/agata/admin/api/tess-bulk-import/scripts', {
+            method: 'POST',
+            body: fd
+        });
+        const data = await resp.json();
+
+        if (data.script_id) {
+            // Show parsing status
+            document.getElementById('uploadScriptForm').style.display = 'none';
+            document.getElementById('parsingStatus').style.display = 'block';
+
+            // Poll parse status
+            await pollParseStatus(data.script_id);
+
+            bootstrap.Modal.getInstance(document.getElementById('uploadScriptModal')).hide();
+            document.getElementById('uploadScriptForm').style.display = 'block';
+            document.getElementById('parsingStatus').style.display = 'none';
+            document.getElementById('uploadScriptForm').reset();
+
+            loadScriptLibrary();
+
+            const alertEl = document.createElement('div');
+            alertEl.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+            alertEl.style.zIndex = '9999';
+            alertEl.innerHTML = `
+                <i class="fas fa-check-circle"></i>
+                <strong>Script caricato!</strong> Pronto per creare batch.
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alertEl);
+        } else {
+            alert('Errore: ' + (data.error || 'Sconosciuto'));
+        }
+    } catch (err) {
+        alert('Errore: ' + err);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-upload"></i> Carica';
+    }
+});
+
+async function pollParseStatus(scriptId) {
+    return new Promise((resolve) => {
+        const statusText = document.getElementById('parsingStatusText');
+        const interval = setInterval(async () => {
+            try {
+                const resp = await fetch(`/agata/admin/api/tess-bulk-import/scripts/${scriptId}/status`);
+                const data = await resp.json();
+
+                if (data.parse_state === 'ready') {
+                    statusText.innerHTML = `✓ <strong>Script pronto!</strong> Trovate ${data.total_entries} entry.`;
+                    clearInterval(interval);
+                    setTimeout(resolve, 1000);
+                } else if (data.parse_state === 'failed') {
+                    statusText.innerHTML = `✗ <strong>Errore parsing:</strong> ${data.parse_error}`;
+                    clearInterval(interval);
+                    setTimeout(resolve, 2000);
+                } else {
+                    statusText.textContent = `Elaborazione in corso... ${data.total_entries || '?'} entry trovate`;
+                }
+            } catch (err) {
+                // Retry
+            }
+        }, 1000);
+    });
+}
+
+async function openCreateBatchModal(scriptId, scriptName) {
+    // Load batch suggestion
+    try {
+        const resp = await fetch(`/agata/admin/api/tess-bulk-import/scripts/${scriptId}/next-batch`);
+        const data = await resp.json();
+
+        const filesSelected = Math.min(500, data.count || 500);
+        const offset = data.offset;
+
+        // Extract sector from first preview entry (if available)
+        let sector = '0000';
+        if (data.preview && data.preview.length > 0) {
+            sector = String(data.preview[0].sector).padStart(4, '0');
+        }
+
+        // Simplify filename: extract just the archive/script basename without extensions
+        // Handle: "filename.zip" or "filename.sh" or "filename.sh.gz" etc.
+        let simpleFileName = scriptName
+            .replace(/\.zip$/, '')
+            .replace(/\.7z$/, '')
+            .replace(/\.sh(\.gz)?$/, '')
+            .replace(/\.txt(\.gz)?$/, '')
+            .replace(/\.gz$/, '');
+
+        document.getElementById('batchScriptId').value = scriptId;
+        document.getElementById('batchScriptName').textContent = scriptName;
+        document.getElementById('batchOffset').value = offset;
+        document.getElementById('batchFilesSelected').value = filesSelected;
+
+        // Store sector and filename for auto-update when user changes filesSelected
+        document.getElementById('batchScriptId').dataset.sector = sector;
+        document.getElementById('batchScriptId').dataset.simpleFileName = simpleFileName;
+        document.getElementById('batchScriptId').dataset.offset = offset;
+
+        // Generate readable job name AFTER storing dataset: <sector>_offset-<offset>-<count>_<basename>
+        const jobNameSuggested = `${sector}_offset-${offset}-${filesSelected}_${simpleFileName}`;
+        document.getElementById('batchJobName').value = jobNameSuggested;
+
+        if (data.preview && data.preview.length > 0) {
+            const previewHtml = data.preview.slice(0, 5).map(e =>
+                `<small>TIC ${e.tic_id} | Sector ${e.sector} | ${e.relative_path}</small>`
+            ).join('<br>');
+            document.getElementById('batchPreview').innerHTML = previewHtml;
+        }
+
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('createBatchModal')).show();
+    } catch (err) {
+        alert('Errore caricamento batch: ' + err);
+    }
+}
+
+// Auto-update job name when user changes filesSelected
+document.getElementById('batchFilesSelected')?.addEventListener('change', function() {
+    const filesSelected = parseInt(this.value);
+    const sector = document.getElementById('batchScriptId').dataset.sector || '0000';
+    const simpleFileName = document.getElementById('batchScriptId').dataset.simpleFileName || '';
+    const offset = document.getElementById('batchScriptId').dataset.offset || 0;
+
+    if (!isNaN(filesSelected)) {
+        const newJobName = `${sector}_offset-${offset}-${filesSelected}_${simpleFileName}`;
+        document.getElementById('batchJobName').value = newJobName;
+    }
+});
+
+document.getElementById('createBatchForm')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const scriptId = parseInt(document.getElementById('batchScriptId').value);
+    const jobName = document.getElementById('batchJobName').value.trim();
+    const offset = parseInt(document.getElementById('batchOffset').value);
+    const filesSelected = parseInt(document.getElementById('batchFilesSelected').value);
+
+    if (!jobName || !filesSelected || isNaN(offset)) {
+        alert('Compila tutti i campi');
+        return;
+    }
+
+    const btn = document.getElementById('createBatchBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creazione...';
+
+    try {
+        const resp = await fetch('/agata/admin/api/tess-bulk-import/jobs', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                script_id: scriptId,
+                job_name: jobName,
+                script_offset: offset,
+                files_selected: filesSelected
+            })
+        });
+        const data = await resp.json();
+
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('createBatchModal')).hide();
+            document.getElementById('createBatchForm').reset();
+
+            const alertEl = document.createElement('div');
+            alertEl.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+            alertEl.style.zIndex = '9999';
+            alertEl.innerHTML = `
+                <i class="fas fa-check-circle"></i>
+                <strong>Batch creato!</strong> Job <code>${data.job_code}</code> in esecuzione (${data.files_selected} file).
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alertEl);
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            alert('Errore: ' + data.error);
+        }
+    } catch (err) {
+        alert('Errore: ' + err);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-rocket"></i> Crea Batch';
+    }
+});
+
+async function deleteScript(scriptId) {
+    if (!confirm('Eliminare questo script?\n\nVerranno cancellati anche tutti i dati indicizzati.')) {
+        return;
+    }
+
+    try {
+        const resp = await fetch(`/agata/admin/api/tess-bulk-import/scripts/${scriptId}`, {
+            method: 'DELETE'
+        });
+        const data = await resp.json();
+
+        if (data.success) {
+            loadScriptLibrary();
+            const alertEl = document.createElement('div');
+            alertEl.className = 'alert alert-warning alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+            alertEl.style.zIndex = '9999';
+            alertEl.innerHTML = `
+                <i class="fas fa-trash"></i>
+                <strong>Script eliminato.</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            document.body.appendChild(alertEl);
+        } else {
+            alert('Errore: ' + data.error);
+        }
+    } catch (err) {
+        alert('Errore: ' + err);
+    }
+}
+
+// Load script library on page load
+document.addEventListener('DOMContentLoaded', loadScriptLibrary);
+</script>
+{% endblock %}

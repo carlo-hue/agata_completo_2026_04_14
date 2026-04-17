@@ -1,0 +1,238 @@
+/**
+ * AGATA Authentication Styles
+ * Global styles for auth pages (login, password reset, etc.)
+ */
+
+:root {
+    --primary-color: #2563eb;
+    --secondary-color: #1e40af;
+    --accent-color: #10b981;
+    --danger-color: #ef4444;
+    --warning-color: #f59e0b;
+
+    --light-bg: #f8fafc;
+    --border-color: #e2e8f0;
+    --text-primary: #1f2937;
+    --text-secondary: #6b7280;
+}
+
+/* Smooth transitions */
+* {
+    transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Focus states for accessibility */
+button:focus-visible,
+input:focus-visible,
+a:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
+/* Loading spinner animation */
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.spinner {
+    animation: spin 1s linear infinite;
+}
+
+/* Error states */
+.error-text {
+    color: var(--danger-color);
+    font-size: 13px;
+    font-weight: 500;
+    margin-top: 6px;
+}
+
+input[aria-invalid="true"],
+textarea[aria-invalid="true"],
+select[aria-invalid="true"] {
+    border-color: var(--danger-color) !important;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1) !important;
+}
+
+/* Success states */
+input[aria-invalid="false"],
+textarea[aria-invalid="false"],
+select[aria-invalid="false"] {
+    border-color: var(--accent-color);
+}
+
+/* Loading states */
+button[disabled],
+button[aria-busy="true"] {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Utility classes */
+.text-muted {
+    color: var(--text-secondary);
+}
+
+.text-danger {
+    color: var(--danger-color);
+}
+
+.text-success {
+    color: var(--accent-color);
+}
+
+.bg-light {
+    background-color: var(--light-bg);
+}
+
+.border-subtle {
+    border-color: var(--border-color);
+}
+
+/* Auth card */
+.auth-card {
+    background: white;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    padding: 24px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.auth-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* Auth button base */
+.auth-btn {
+    padding: 10px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    white-space: nowrap;
+    text-decoration: none;
+    user-select: none;
+}
+
+.auth-btn:hover:not([disabled]) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.auth-btn:active:not([disabled]) {
+    transform: translateY(0);
+}
+
+/* Primary button */
+.auth-btn-primary {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+.auth-btn-primary:hover:not([disabled]) {
+    background: var(--secondary-color);
+    border-color: var(--secondary-color);
+}
+
+/* Secondary button */
+.auth-btn-secondary {
+    background: white;
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+.auth-btn-secondary:hover:not([disabled]) {
+    background: var(--light-bg);
+    border-color: var(--text-secondary);
+}
+
+/* Form group */
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-group label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+}
+
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+/* Auth divider */
+.auth-divider {
+    display: flex;
+    align-items: center;
+    margin: 24px 0;
+    gap: 12px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border-color);
+}
+
+/* Helper text */
+.form-help {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 8px;
+    line-height: 1.5;
+}
+
+.form-help a {
+    color: var(--primary-color);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.form-help a:hover {
+    text-decoration: underline;
+}
+
+/* Responsive fixes */
+@media (max-width: 640px) {
+    .auth-card {
+        padding: 16px;
+    }
+
+    .auth-btn {
+        width: 100%;
+    }
+}

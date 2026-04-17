@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <title>AstroQuiz - Complimenti!</title>
+  <link href="{{ url_for('static', filename='css/sb-admin-2.min.css') }}" rel="stylesheet">
+</head>
+<body class="bg-success text-white text-center p-5">
+  <div class="container">
+    <h2>Complimenti! Hai risposto correttamente a tutte le domande!</h2>
+    <p>Scansiona questo codice QR per scaricare il tuo diploma:</p>
+    <img src="{{ url_for('quiz.serve_diploma', filename=qr_file) }}" alt="Diploma">
+  </div>
+</body>
+</html>

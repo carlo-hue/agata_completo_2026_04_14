@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <title>AstroQuiz</title>
+  <link href="{{ url_for('static', filename='css/sb-admin-2.min.css') }}" rel="stylesheet">
+</head>
+<body class="bg-primary text-white text-center p-5">
+  <div class="container">
+    <h1 class="mb-4">Benvenuto su AstroQuiz!</h1>
+    <p>Riesci a rispondere a tutte le domande di astronomia?</p>
+    <a href="{{ url_for('quiz') }}" class="btn btn-light btn-lg mt-3">Inizia il quiz</a>
+  </div>
+</body>
+</html>

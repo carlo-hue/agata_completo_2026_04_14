@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Foto della Serata - AstroGen APS</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox/dist/css/glightbox.min.css">
+  <style>
+    #bg-image {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-image: url("{{ url_for('foto_serata.static', filename='img/3z_bubble_bg_n.jpg') }}");
+    background-size: cover;
+    background-position: center;
+    z-index: -1;
+    opacity: 0.75;
+    filter: blur(2px) brightness(0.5);
+    }
+    .header-container {
+    display: flex;
+    align-items: center;
+    gap: 10px; /* spazio tra logo e titolo */
+    padding-bottom: 20px;
+    }
+    .header-container img {
+    height: 50px; /* regola l'altezza come vuoi */
+    width: auto;
+    }
+    .header-container h1 {
+    margin: 0;
+    color: white;
+    text-shadow: 0 0 10px #000;
+    }
+    body {
+      color: #fff;
+      padding: 2rem;
+      font-family: 'Segoe UI', sans-serif;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 2rem;
+      text-shadow: 0 0 10px #000;
+    }
+
+    .gallery {
+    display: grid;
+    gap: 12px;
+    /* Stile di default: 1 colonna per schermi molto piccoli (mobile-first) */
+    grid-template-columns: 1fr; 
+    }
+    
+
+    /* Schermi medi (es. da 576px a 991px): 2 colonne */
+    @media (min-width: 576px) {
+    .gallery {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    }
+
+    /* Schermi grandi (es. da 992px in su): 4 colonne */
+    @media (min-width: 992px) {
+    .gallery {
+        grid-template-columns: repeat(4, 1fr);
+    }
+    }
+
+    /* Regole esistenti, ora puoi pensare a quante colonne mostrare
+    in queste dimensioni, o lasciare che auto-fit decida con un minmax più alto. */
+    @media (min-width: 576px) {
+        .gallery {
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); /* Potresti voler aumentare il minmax qui */
+        }
+    }
+
+    @media (min-width: 768px) {
+        .gallery {
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        }
+    }
+
+    .gallery img {
+      width: 100%;
+      border-radius: 10px;
+      border: 2px solid #555;
+      transition: transform 0.3s;
+    }
+
+    .gallery img:hover {
+      transform: scale(1.03);
+      cursor: pointer;
+    }
+
+    .download-link {
+      display: block;
+      text-align: center;
+      font-size: 0.9em;
+      margin-top: 5px;
+      color: #ccc;
+      text-decoration: none;
+    }
+
+    .download-link:hover {
+      color: #ffd700;
+    }
+
+    /* Stili per il popup social */
+    .social-popup-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+      animation: fadeIn 0.3s ease-in-out;
+    }
+
+    .social-popup {
+      background: linear-gradient(135deg, #1a1a2e, #16213e);
+      border-radius: 15px;
+      padding: 2rem;
+      max-width: 450px;
+      width: 90%;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      border: 1px solid #444;
+      position: relative;
+      animation: slideIn 0.4s ease-out;
+    }
+
+    .social-popup h3 {
+      color: #ffd700;
+      margin-bottom: 1rem;
+      font-size: 1.5rem;
+    }
+
+    .social-popup p {
+      color: #ccc;
+      margin-bottom: 1.5rem;
+      line-height: 1.5;
+    }
+
+    .social-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 1rem;
+    }
+
+    .social-btn {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      text-decoration: none;
+      color: white;
+      font-weight: 500;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .social-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+      color: white;
+    }
+
+    .facebook-btn {
+      background: linear-gradient(45deg, #1877f2, #42a5f5);
+    }
+
+    .instagram-btn {
+      background: linear-gradient(45deg, #e1306c, #fd5949, #ffdc80);
+    }
+
+    .whatsapp-btn {
+      background: linear-gradient(45deg, #25d366, #128c7e);
+    }
+
+    .mailing-btn {
+      background: linear-gradient(45deg, #6c5ce7, #a29bfe);
+    }
+
+    .close-popup {
+      position: absolute;
+      top: 10px;
+      right: 15px;
+      background: none;
+      border: none;
+      color: #ccc;
+      font-size: 1.5rem;
+      cursor: pointer;
+      transition: color 0.3s;
+    }
+
+    .close-popup:hover {
+      color: #fff;
+    }
+
+    .dismiss-btn {
+      background: transparent;
+      border: 1px solid #666;
+      color: #ccc;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-top: 10px;
+    }
+
+    .dismiss-btn:hover {
+      border-color: #888;
+      color: #fff;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes slideIn {
+      from { 
+        opacity: 0;
+        transform: translateY(-30px) scale(0.9);
+      }
+      to { 
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @media (max-width: 576px) {
+      .social-popup {
+        padding: 1.5rem;
+        margin: 1rem;
+      }
+      
+      .social-popup h3 {
+        font-size: 1.3rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 🎥 Sfondo video -->
+  <div id="bg-image"></div>
+    <div class="header-container">
+        <img src="{{ url_for('foto_serata.static', filename='img/logo_astrogen_bianco_n.png') }}" alt="Logo AstroGen">
+        <h1>Oggetti astronomici visti insieme nella serata - Associazione AstroGen APS</h1>
+  </div>
+  <div class="container">
+    <div class="gallery">
+      {% for foto in foto_list %}
+        <div>
+          <a href="{{ foto }}" class="glightbox" data-gallery="serata">
+            <img src="{{ foto }}" alt="Foto della serata">
+          </a>
+          <a class="download-link" href="{{ foto }}" download data-download-trigger>⬇️ Scarica</a>
+        </div>
+      {% else %}
+        <p class="text-center">Nessuna foto trovata.</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Popup Social -->
+  <div class="social-popup-overlay" id="socialPopup">
+    <div class="social-popup">
+      <button class="close-popup" id="closePopup">&times;</button>
+      <h3>🌟 Ti è piaciuta la serata?</h3>
+      <p>Aiutaci a condividere la passione per l'astronomia! Seguici sui nostri canali social per rimanere aggiornato su tutte le nostre attività.</p>
+      
+      <div class="social-buttons">
+        <a href="https://www.facebook.com/astrogenaps" target="_blank" class="social-btn facebook-btn">
+          📘 Metti Like su Facebook
+        </a>
+        <a href="https://www.instagram.com/astrogen_aps" target="_blank" class="social-btn instagram-btn">
+          📸 Seguici su Instagram
+        </a>
+        <a href="https://whatsapp.com/channel/0029Vb6dwti6hENnYy2UHA2r" target="_blank" class="social-btn whatsapp-btn">
+          💬 Iscriviti al Canale WhatsApp
+        </a>
+        <a href="https://crm.astrogen.it/civicrm/profile/create?gid=2&reset=1" target="_blank" class="social-btn mailing-btn">
+          📧 Iscriviti alla Mailing List
+        </a>
+      </div>
+      
+      <button class="dismiss-btn" id="dismissPopup">Forse più tardi</button>
+    </div>
+  </div>
+
+  <footer class="text-center mt-5">
+    <hr style="border-color: #aaa;">
+    <p class="mb-2">Seguici anche su:</p>
+    <div class="d-flex justify-content-center gap-4">
+      <a href="https://www.astrogen.it" target="_blank" class="text-white text-decoration-none">
+        🌐 Sito ufficiale
+      </a>
+      <a href="https://www.facebook.com/astrogenaps" target="_blank" class="text-white text-decoration-none">
+        📘 Facebook
+      </a>
+      <a href="https://www.instagram.com/astrogen_aps" target="_blank" class="text-white text-decoration-none">
+        📸 Instagram
+      </a>
+      <a href="https://whatsapp.com/channel/0029Vb6dwti6hENnYy2UHA2r" target="_blank" class="text-white text-decoration-none">
+        💬 Canale WhatsApp
+      </a>
+    </div>
+    <p class="mt-3" style="font-size: 0.85em; color: #ccc;">&copy; 2025 AstroGen APS - Tutti i diritti riservati</p>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/glightbox/dist/js/glightbox.min.js"></script>
+  <script>
+    const lightbox = GLightbox({
+      selector: '.glightbox',
+      touchNavigation: true,
+      loop: true,
+      closeButton: true,
+      zoomable: true
+    });
+
+    // Gestione popup social per il primo download
+    let hasShownSocialPopup = false;
+    const socialPopup = document.getElementById('socialPopup');
+    const closePopupBtn = document.getElementById('closePopup');
+    const dismissPopupBtn = document.getElementById('dismissPopup');
+
+    // Funzione per mostrare il popup
+    function showSocialPopup() {
+      if (!hasShownSocialPopup) {
+        socialPopup.style.display = 'flex';
+        hasShownSocialPopup = true;
+        
+        // Aggiungi un piccolo ritardo per rendere l'animazione più fluida
+        setTimeout(() => {
+          socialPopup.querySelector('.social-popup').style.opacity = '1';
+        }, 50);
+      }
+    }
+
+    // Funzione per nascondere il popup
+    function hideSocialPopup() {
+      socialPopup.style.display = 'none';
+    }
+
+    // Event listeners per chiudere il popup
+    closePopupBtn.addEventListener('click', hideSocialPopup);
+    dismissPopupBtn.addEventListener('click', hideSocialPopup);
+
+    // Chiudi il popup cliccando fuori
+    socialPopup.addEventListener('click', function(e) {
+      if (e.target === socialPopup) {
+        hideSocialPopup();
+      }
+    });
+
+    // Chiudi con il tasto ESC
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && socialPopup.style.display === 'flex') {
+        hideSocialPopup();
+      }
+    });
+
+    // Aggiungi event listener a tutti i link di download
+    document.querySelectorAll('[data-download-trigger]').forEach(link => {
+      link.addEventListener('click', function(e) {
+        // Mostra il popup dopo un breve ritardo per permettere l'inizio del download
+        setTimeout(() => {
+          showSocialPopup();
+        }, 800);
+      });
+    });
+
+    // Aggiungi tracking dei click sui social nel popup
+    document.querySelectorAll('.social-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        // Qui potresti aggiungere del tracking analytics se necessario
+        console.log('Click su social:', this.textContent.trim());
+        
+        // Nascondi il popup dopo il click
+        setTimeout(() => {
+          hideSocialPopup();
+        }, 300);
+      });
+    });
+  </script>
+</body>
+</html>

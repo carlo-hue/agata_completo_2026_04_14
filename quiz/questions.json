@@ -1,0 +1,52 @@
+[
+  {
+    "question": "Qual \u00e8 il pianeta pi\u00f9 vicino al Sole?",
+    "options": [
+      "Venere",
+      "Terra",
+      "Mercurio",
+      "Marte"
+    ],
+    "answer": "Mercurio"
+  },
+  {
+    "question": "Quante lune ha Marte?",
+    "options": [
+      "1",
+      "2",
+      "3",
+      "4"
+    ],
+    "answer": "2"
+  },
+  {
+    "question": "Come si chiama il nostro satellite naturale?",
+    "options": [
+      "Luna",
+      "Europa",
+      "Titano",
+      "Io"
+    ],
+    "answer": "Luna"
+  },
+  {
+    "question": "Cosa si osserva con un telescopio solare?",
+    "options": [
+      "La Luna",
+      "Il Sole",
+      "Le galassie",
+      "Le stelle"
+    ],
+    "answer": "Il Sole"
+  },
+  {
+    "question": "Qual \u00e8 la stella pi\u00f9 vicina alla Terra?",
+    "options": [
+      "Sirius",
+      "Alpha Centauri",
+      "Il Sole",
+      "Betelgeuse"
+    ],
+    "answer": "Il Sole"
+  }
+]

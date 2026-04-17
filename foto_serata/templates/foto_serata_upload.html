@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Foto in diretta</title>
+</head>
+<body>
+    <h1>Foto caricate con successo</h1>
+     {% if errore %}
+            <h2>{{ errore }}</h2>
+    {% endif %}
+    {% if foto_links %}
+        <ul>
+        {% for foto in foto_links %}
+            <li>{{ foto }}</li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <p>Nessuna foto caricata.</p>
+    {% endif %}
+</body>
+</html>

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>APOD del Compleanno</title>
+</head>
+<body>
+    <h1>Scopri l'immagine NASA del tuo compleanno!</h1>
+
+    <form method="post">
+        <label for="birthdate">Inserisci la tua data di nascita:</label>
+        <input type="date" id="birthdate" name="birthdate" required>
+        <button type="submit">Cerca</button>
+    </form>
+
+    {% if error %}
+        <p style="color: red;">{{ error }}</p>
+    {% endif %}
+
+    {% if image %}
+        <h2>{{ image.title }}</h2>
+        <p><strong>Data:</strong> {{ image.date }}</p>
+        <p>{{ image.explanation }}</p>
+
+        {% if image.media_type == 'image' %}
+            <img src="{{ image.url }}" alt="APOD" width="100%">
+        {% elif image.media_type == 'video' %}
+            <iframe width="80%" src="{{ image.url }}" frameborder="0" allowfullscreen></iframe>
+        {% endif %}
+    {% endif %}
+<div class="container">
+
+    {% if error %}
+        <div class="alert alert-danger" role="alert">
+            {{ error }}
+        </div>
+    {% endif %}
+
+    {% if fallback %}
+        <div class="alert alert-info" role="alert">
+            {{ fallback }}
+        </div>
+    {% endif %}
+
+    <form method="POST">
+        </form>
+
+    {% if image %}
+        {% endif %}
+
+</div>
+</body>
+</html>

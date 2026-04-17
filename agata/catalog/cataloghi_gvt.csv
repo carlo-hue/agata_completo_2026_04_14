@@ -1,0 +1,81 @@
+contesto;catalogo;attributi;reference;commento;fonte;condizione d'uso;chiave_match;articolo;descrizione;unita;ucd
+identificativi;IV/38/tic;TIC;;solo se c'è (solo per stelle molto intense);VizieR;solo se disponibile;RA/DEC cone;Stassun et al., 2019;Identificatore nel catalogo TIC (TESS Input Catalog);;ID_MAIN
+identificativi;I/255/out;GSC;;;VizieR;preferibile se presente;RA/DEC cone;Lasker et al., 2008;Identificatore Guide Star Catalog (GSC);;ID_MAIN
+identificativi;I/271/out;GSC2.2;;va messo solo se non c'è GSC;VizieR;fallback se manca GSC;RA/DEC cone;Lasker et al., 2008;Identificatore Guide Star Catalog versione 2.2;;
+identificativi;I/322A/out;UCAC4;;inserire sempre;VizieR;sempre;RA/DEC cone;Zacharias et al., 2013;Identificatore catalogo UCAC4;;ID_MAIN
+identificativi;I/252/out;USNO-A2.0;;inserire sempre;VizieR;sempre;RA/DEC cone;Monet et al., 1998;Identificatore catalogo USNO-A2.0;;ID_MAIN
+identificativi;I/284/out;USNO-B1.0;;inserire sempre;VizieR;sempre;RA/DEC cone;Monet et al., 2003;Identificatore catalogo USNO-B1.0;;ID_MAIN
+identificativi;II/246/out;_2MASS;;inserire sempre, ATTENZIONE: con la J davanti;VizieR;sempre (formattare con prefisso J);RA/DEC cone;Skrutskie et al., 2006;Identificatore catalogo 2MASS (aggiungere prefisso J);;
+identificativi;I/345/gaia2;Source;;;VizieR;sempre;RA/DEC cone;Gaia Collaboration, 2018;Identificatore sorgente Gaia DR2;;ID_MAIN
+identificativi;I/355/gaiadr3;Source;;;VizieR;sempre;RA/DEC cone;Gaia Collaboration, 2023;Identificatore sorgente Gaia DR3;;ID_MAIN
+identificativi;I/305/out;GSC2.3;;;VizieR;opzionale / se disponibile;RA/DEC cone;Lasker et al., 2008;Identificatore Guide Star Catalog versione 2.3;;ID_MAIN
+identificativi;I/239/tyc_main;TYC;;;VizieR;opzionale;RA/DEC cone;Høg et al., 2000;Identificatore catalogo Tycho-2;;ID_MAIN
+identificativi;I/146/ppm1;PPM;;;VizieR;opzionale;RA/DEC cone;Röser & Bastian, 1993;Identificatore catalogo PPM (Positions and Proper Motions);;ID_MAIN
+identificativi;J/ApJ/833/119/distallw;HIP;;;VizieR;opzionale;RA/DEC cone;van Leeuwen, 2007;Identificatore catalogo Hipparcos;;ID_ALTERNATIVE
+identificativi;V/15/catalog;HD;;;VizieR;opzionale;RA/DEC cone;Watson et al., 2006;Identificatore catalogo Henry Draper (HD);;ID_ALTERNATIVE
+identificativi;V/15/catalog;SAO;;;VizieR;opzionale;RA/DEC cone;Watson et al., 2006;Identificatore catalogo SAO (Smithsonian Astrophysical Observatory);;ID_MAIN
+identificativi;I/61B/agk3;BD;;;VizieR;opzionale;RA/DEC cone;Dieckvoss & Heckmann, 1975;Identificatore catalogo Bonner Durchmusterung (BD);;ID_ALTERNATIVE
+parametri_fisici;J/MNRAS/522/29/table2;TIC;"Green, M. J.; Maoz, D.; Mazeh, T.; et al., 2023…; 2023MNRAS.522…29G";;VizieR;se presente;RA/DEC cone;Green et al., 2023;Identificatore TIC nel catalogo Green 2023;;ID_MAIN
+parametri_fisici;J/MNRAS/522/29/table2;Porb;"Green, M. J.; Maoz, D.; Mazeh, T.; et al., 2023…; 2023MNRAS.522…29G";;VizieR;se presente;RA/DEC cone;Green et al., 2023;Periodo orbitale del sistema binario;d;
+parametri_fisici;IV/39/tic82;Dist;"TESS Input Catalog v8.2 (Paegert+, 2021); 2021arXiv210804778P";;VizieR;se presente;RA/DEC cone;Paegert et al., 2021;Distanza stellare stimata;pc;
+parametri_fisici;IV/39/tic82;Mass;"TESS Input Catalog v8.2 (Paegert+, 2021); 2021arXiv210804778P";;VizieR;se presente;RA/DEC cone;Paegert et al., 2021;Massa stellare stimata;M☉;
+parametri_fisici;IV/39/tic82;Rad;"TESS Input Catalog v8.2 (Paegert+, 2021); 2021arXiv210804778P";;VizieR;se presente;RA/DEC cone;Paegert et al., 2021;Raggio stellare stimato;R☉;
+parametri_fisici;IV/39/tic82;Teff;"TESS Input Catalog v8.2 (Paegert+, 2021); 2021arXiv210804778P";;VizieR;se presente;RA/DEC cone;Paegert et al., 2021;Temperatura effettiva stellare;K;
+parametri_fisici;I/354/starhorse2021;dist50;"StarHorse2, Gaia EDR3 distances (Anders+, 2022); 2022yCat.1354…0A";;VizieR;se presente;RA/DEC cone;Anders et al., 2022;Distanza stellare (mediana 50° percentile);pc;
+parametri_fisici;I/354/starhorse2021;teff50;"StarHorse2, Gaia EDR3 distances (Anders+, 2022); 2022yCat.1354…0A";;VizieR;se presente;RA/DEC cone;Anders et al., 2022;Temperatura effettiva stellare (mediana 50° percentile);K;
+parametri_fisici;I/354/starhorse2021;mass50;"StarHorse2, Gaia EDR3 distances (Anders+, 2022); 2022yCat.1354…0A";;VizieR;se presente;RA/DEC cone;Anders et al., 2022;Massa stellare (mediana 50° percentile);M☉;
+parametri_fisici;I/355/paramp;GMAG;;;VizieR;se presente;RA/DEC cone;Gaia Collaboration, 2023;Magnitudine assoluta in banda G (Gaia DR3);mag;
+parametri_fisici;I/355/paramp;Mass-Flame;;;VizieR;se presente;RA/DEC cone;Gaia Collaboration, 2023;Massa stellare dal modello FLAME (Gaia DR3);M☉;
+parametri_fisici;I/355/paramp;Rad;;;VizieR;se presente;RA/DEC cone;Gaia Collaboration, 2023;Raggio stellare dal modello FLAME (Gaia DR3);R☉;
+parametri_fisici;I/355/paramp;Dist;;;VizieR;se presente;RA/DEC cone;Gaia Collaboration, 2023;Distanza dalla stella (Gaia DR3);pc;
+parametri_fisici;I/355/paramp;Teff;;;VizieR;se presente;RA/DEC cone;Gaia Collaboration, 2023;Temperatura effettiva stellare (Gaia DR3);K;
+tipo_spettrale;VI/135/table15;Type;2010PASP..122.1437P;NON UTILIZZARE QUESTO CATALOGO (nota esplicita in capture);VizieR;da escludere;RA/DEC cone;Pickles & Depagne, 2010;Tipo spettrale MK (NON USARE - catalogo escluso);;SPECT_TYPE_MK
+tipo_spettrale;J/ApJS/266/4;SpT;2023ApJS..266…4L;;VizieR;se presente;RA/DEC cone;Liu et al., 2023;Tipo spettrale stellare da LAMOST;;SPECT_TYPE_MK
+tipo_spettrale;I/355/paramp;SpType-FLS;;;VizieR;se presente;RA/DEC cone;Gaia Collaboration, 2023;Tipo spettrale Gaia da spettri a bassa risoluzione (FLS);;
+tipo_spettrale;III/51B/vol2;SpType;1978MM…CO2….0H;;VizieR;se presente;RA/DEC cone;Hoffleit & Jaschek, 1982;Tipo spettrale dal Bright Star Catalogue;;SPECT_TYPE_MK
+tipo_spettrale;I/146/ppm1;Sp;2012AstL…38..331A;;VizieR;se presente;RA/DEC cone;Röser & Bastian, 1993;Tipo spettrale dal catalogo PPM;;SPECT_TYPE_GENERAL
+tipo_spettrale;I/131A/sao;SpType;SAO Star Catalog J2000…;;VizieR;se presente;RA/DEC cone;Smithsonian Astrophysical Observatory, 1966;Tipo spettrale dal catalogo SAO;;SPECT_TYPE_GENERAL
+tipo_spettrale;I/61B/agk3;Sp;AGK3… (Dieckvoss & Heckmann, 1975…);;VizieR;se presente;RA/DEC cone;Dieckvoss & Heckmann, 1975;Tipo spettrale dal catalogo AGK3;;SPECT_TYPE_GENERAL
+tipo_spettrale;I/238A/picat;MK;;;VizieR;se presente;RA/DEC cone;Buscombe, 1998;Tipo spettrale MK dal catalogo Buscombe;;SPECT_TYPE_MK
+tipo_spettrale;I/198/catalog;Sp;;;VizieR;se presente;RA/DEC cone;Buscombe, 1995;Tipo spettrale dal catalogo Buscombe 1995;;SPECT_TYPE_GENERAL
+tipo_spettrale;III/231/catalog;SpType;;;VizieR;se presente;RA/DEC cone;Skiff, 2014;Tipo spettrale compilato (catalogo Skiff MK);;SPECT_TYPE_MK
+tipo_spettrale;J/AJ/163/152/table1;SpType;;;VizieR;se presente;RA/DEC cone;Kounkel et al., 2022;Tipo spettrale da Kounkel et al. 2022;;SPECT_TYPE_MK
+tipo_spettrale;V/15/catalog;Sp;;;VizieR;se presente;RA/DEC cone;Watson et al., 2006;Tipo spettrale dal catalogo VSX/HD;;SPECT_TYPE_MK
+tipo_spettrale;I/280B/ascc;SpType;;;VizieR;se presente;RA/DEC cone;Kharchenko, 2001;Tipo spettrale dal catalogo ASCC-2.5;;SPECT_TYPE_MK
+tipo_spettrale;V/156/dr7lrs;subClass;2022yCat.5156…0L;;VizieR;se presente;RA/DEC cone;Luo et al., 2022;Sottoclasse spettrale LAMOST DR7 (es. G2, K5);;CLASS_OBJECT
+magnitudine;I/108/cpd;mag;Cape Photographic Durchmusterung (Gill+ 1895-1900);;VizieR;se presente;RA/DEC cone;Gill & Kapteyn, 1895;Magnitudine fotografica (Cape Photographic Durchmusterung);mag;
+magnitudine;I/114/cd;mag;Cordoba Durchmusterung (Thome 1892-1932);;VizieR;se presente;RA/DEC cone;Thome, 1892;Magnitudine fotografica (Cordoba Durchmusterung);mag;
+magnitudine;IV/39/tic82;Tmag;TIC v8.2 (Paegert+, 2021) 2021arXiv210804778P;;VizieR;se presente;RA/DEC cone;Paegert et al., 2021;Magnitudine nella banda TESS;mag;
+magnitudine;I/355/paramp;GMAG;;;VizieR;se presente;RA/DEC cone;Gaia Collaboration, 2023;Magnitudine assoluta Gaia banda G;mag;
+magnitudine;I/355/gaiadr3;BP-RP;Gaia DR3 Part 1 Main source… 2022yCat.1355…0G;;VizieR;se presente;RA/DEC cone;Gaia Collaboration, 2023;Colore BP-RP Gaia (Gmag_BP - Gmag_RP);mag;
+magnitudine;I/355/gaiadr3;Gmag;Gaia DR3 Part 1 Main source… 2022yCat.1355…0G;;VizieR;se presente;RA/DEC cone;Gaia Collaboration, 2023;Magnitudine apparente Gaia banda G;mag;
+magnitudine;II/264/asas3;Vmax;ASAS Variable Stars… 2002AcA…52..397P;;VizieR;se presente;RA/DEC cone;Pojmanski, 2002;Magnitudine V massima ASAS (stelle brillanti);mag;
+magnitudine;I/197A/tic;Vmag;"Tycho Input Catalogue… (Egret+ 1992); 1992A&A…258..217E";;VizieR;se presente;RA/DEC cone;Egret et al., 1992;Magnitudine V dal Tycho Input Catalogue;mag;
+magnitudine;I/196/main;Vmag;"Hipparcos Input Catalogue v2 (Turon+ 1993); 1993BICDS..43…5T";;VizieR;se presente;RA/DEC cone;Turon et al., 1993;Magnitudine V dall'Hipparcos Input Catalogue;mag;
+variabilita_nota;I/357/acc9;Per;"Non-single stars (Gaia Collaboration, 2022); 2022yCat.1357…0G";;VizieR;se presente;RA/DEC cone;Gaia Collaboration, 2022;Periodo orbitale da Gaia non-single stars (acc9);d;
+variabilita_nota;I/357/acc7;Per;"Non-single stars (Gaia Collaboration, 2022); 2022yCat.1357…0G";;VizieR;se presente;RA/DEC cone;Gaia Collaboration, 2022;Periodo orbitale da Gaia non-single stars (acc7);d;
+variabilita_nota;I/357/tboasb1c;Per;"Non-single stars (Gaia Collaboration, 2022); 2022yCat.1357…0G";;VizieR;se presente;RA/DEC cone;Gaia Collaboration, 2022;Periodo orbitale da Gaia SB1c;d;
+variabilita_nota;I/357/tbooc;Per;"Non-single stars (Gaia Collaboration, 2022); 2022yCat.1357…0G";;VizieR;se presente;RA/DEC cone;Gaia Collaboration, 2022;Periodo orbitale da Gaia OC;d;
+variabilita_nota;I/357/tboeb;Per;"Non-single stars (Gaia Collaboration, 2022); 2022yCat.1357…0G";;VizieR;se presente;RA/DEC cone;Gaia Collaboration, 2022;Periodo orbitale da Gaia EB (eclissanti);d;
+variabilita_nota;I/357/tbosb1;Per;"Non-single stars (Gaia Collaboration, 2022); 2022yCat.1357…0G";;VizieR;se presente;RA/DEC cone;Gaia Collaboration, 2022;Periodo orbitale da Gaia SB1;d;
+variabilita_nota;B/vsx/vsx;Name;AAVSO VSX (Watson+, 2006-);;VizieR;se presente;RA/DEC cone;Watson et al., 2006;Nome variabile nel catalogo AAVSO VSX;;ID_MAIN
+variabilita_nota;J/ApJS/268/4/table3;Pvar;"Fetherolf+, 2023; 2023ApJS..268…4F";;VizieR;se presente;RA/DEC cone;Fetherolf et al., 2023;Periodo di variabilità fotometrica (Fetherolf 2023);d;
+variabilita_nota;J/ApJS/268/4/table2;P2;"Fetherolf+, 2023; 2023ApJS..268…4F";;VizieR;se presente;RA/DEC cone;Fetherolf et al., 2023;Periodo secondario di variabilità (Fetherolf 2023);d;
+variabilita_nota;J/ApJS/268/4/table2;P1;"Fetherolf+, 2023; 2023ApJS..268…4F";;VizieR;se presente;RA/DEC cone;Fetherolf et al., 2023;Periodo primario di variabilità (Fetherolf 2023);d;
+variabilita_nota;J/ApJS/268/4/table1;Pvar;"Fetherolf+, 2023; 2023ApJS..268…4F";;VizieR;se presente;RA/DEC cone;Fetherolf et al., 2023;Periodo di variabilità fotometrica tabella 1 (Fetherolf 2023);d;
+variabilita_nota;I/358/vmsosc;AmpGFreq?;Gaia DR3 Part 4 Variability… 2022yCat.1358…0G;;VizieR;se presente;RA/DEC cone;Gaia Collaboration, 2022;Ampiezza in banda G con frequenza dominante (Gaia variabilità);mag;
+variabilita_nota;J/ApJ/919/131/table1;TIC;"Hon+, 2021; 2021ApJ…919..131H";;VizieR;se presente;RA/DEC cone;Hon et al., 2021;Identificatore TIC nel catalogo Hon 2021;;ID_MAIN
+variabilita_nota;II/366/catalog;Gaia;"Jayasinghe+, 2018-2020; 2018MNRAS.477.3145J";;VizieR;se presente;RA/DEC cone;Jayasinghe et al., 2018;Identificatore Gaia nel catalogo ASAS-SN variabili;;
+variabilita_nota;I/358/vmsosc;Freq1;Gaia DR3 Part 4 Variability… 2022yCat.1358…0G;;VizieR;se presente;RA/DEC cone;Gaia Collaboration, 2022;Frequenza di variabilità principale (Gaia DR3);1/d;
+variabilita_nota;I/358/vst;Amp;Gaia DR3 Part 4 Variability… 2022yCat.1358…0G;;VizieR;se presente;RA/DEC cone;Gaia Collaboration, 2022;Ampiezza di variabilità fotometrica (Gaia DR3);mag;
+variabilita_nota;I/358/veb;Freq;Gaia DR3 Part 4 Variability… 2022yCat.1358…0G;;VizieR;se presente;RA/DEC cone;Gaia Collaboration, 2022;Frequenza di variabilità (Gaia DR3 eclissanti);1/d;
+variabilita_nota;I/358/vclassre;Class;Gaia DR3 Part 4 Variability… 2022yCat.1358…0G;;VizieR;se presente;RA/DEC cone;Gaia Collaboration, 2022;Classe di variabilità (Gaia DR3);;CLASS_CODE
+variabilita_nota;I/358/varisum;VCR;Gaia DR3 Part 4 Variability… 2022yCat.1358…0G;;VizieR;se presente;RA/DEC cone;Gaia Collaboration, 2022;Numero variabili candidate confermate (Gaia DR3);;CODE_MISC
+variabilita_nota;B/vsx/vsx;min;AAVSO VSX (Watson+, 2006-);;VizieR;se presente;RA/DEC cone;Watson et al., 2006;Magnitudine minima (stella al minimo di luce) AAVSO VSX;mag;
+variabilita_nota;B/vsx/vsx;max;AAVSO VSX (Watson+, 2006-);;VizieR;se presente;RA/DEC cone;Watson et al., 2006;Magnitudine massima (stella al massimo di luce) AAVSO VSX;mag;
+variabilita_nota;B/vsx/vsx;Period;AAVSO VSX (Watson+, 2006-);;VizieR;se presente;RA/DEC cone;Watson et al., 2006;Periodo di variabilità AAVSO VSX;d;
+variabilita_nota;B/vsx/vsx;Type;AAVSO VSX (Watson+, 2006-);;VizieR;se presente;RA/DEC cone;Watson et al., 2006;Tipo di variabilità AAVSO VSX (es. EW, RR, Mira);;VAR_CLASS
+variabilita_nota;J/AJ/155/39/table6;Prot;"Oelkers+, 2018; 2018AJ…155…39O";;VizieR;se presente;RA/DEC cone;Oelkers et al., 2018;Periodo di rotazione stellare (Oelkers 2018);d;
+variabilita_nota;J/AJ/155/39/Variables;TIC;"Oelkers+, 2018; 2018AJ…155…39O";;VizieR;se presente;RA/DEC cone;Oelkers et al., 2018;Identificatore TIC nel catalogo Oelkers 2018;;ID_ALTERNATIVE
+variabilita_nota;J/MNRAS/522/29/table3;TIC;"Green+, 2023; 2023MNRAS.522…29G";;VizieR;se presente;RA/DEC cone;Green et al., 2023;Identificatore TIC nel catalogo Green 2023 tabella 3;;ID_MAIN
+variabilita_nota;J/A+A/669/A67/catalog;TIC;"Hatt+, 2023; 2023A&A…669A..67H";;VizieR;se presente;RA/DEC cone;Hatt et al., 2023;Identificatore TIC nel catalogo Hatt 2023;;ID_MAIN
