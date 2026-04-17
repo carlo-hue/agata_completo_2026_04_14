@@ -1635,17 +1635,31 @@
     }
 
     async function downloadMastTpf(gaiaId, sector, cutoutSize) {
-        const response = await fetch(endpointUrls.mastDownloadUrl, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                gaia_id: gaiaId,
-                sector: sector,
-                cutout_size: cutoutSize,
-            }),
-        });
+        const controller = new AbortController();
+        const timeoutMs = 95000;
+        const timeoutHandle = window.setTimeout(() => controller.abort(), timeoutMs);
+        let response;
+        try {
+            response = await fetch(endpointUrls.mastDownloadUrl, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    gaia_id: gaiaId,
+                    sector: sector,
+                    cutout_size: cutoutSize,
+                }),
+                signal: controller.signal,
+            });
+        } catch (error) {
+            if (error && error.name === "AbortError") {
+                throw new Error("Timeout durante il download TPF da MAST/TESS. Il servizio remoto non ha risposto in tempo.");
+            }
+            throw error;
+        } finally {
+            window.clearTimeout(timeoutHandle);
+        }
         const data = await response.json().catch(() => ({ ok: false, status: "error", message: "Risposta JSON non valida" }));
         output.textContent = JSON.stringify(data, null, 2);
         return { response, data };
@@ -1840,9 +1854,16 @@
             }
 
             lastMastSectorsResult = data;
-            mastHasRemoteResults = true;
+            mastHasRemoteResults = !!data.remote_available;
             renderMastSectors(data);
-            if (data.ra !== undefined && data.dec !== undefined) {
+            if (!data.remote_available) {
+                const localCount = Array.isArray(data.sectors) ? data.sectors.length : 0;
+                if (localCount > 0) {
+                    setMastStatus(data.message || `Controllo remoto non disponibile per gaia_id=${data.gaia_id}; mostro ${localCount} TPF locali.`, "warning");
+                } else {
+                    setMastStatus(data.message || `Controllo remoto non disponibile per gaia_id=${data.gaia_id}.`, "error");
+                }
+            } else if (data.ra !== undefined && data.dec !== undefined) {
                 setMastStatus(
                     `Settori TESS trovati per gaia_id=${data.gaia_id} | ra=${data.ra} | dec=${data.dec} | gmag=${data.gmag ?? "-"}`,
                     "success"
@@ -1862,7 +1883,7 @@
         const gaiaId = String(gaiaSourceIdInput.value || "").trim();
         const cutoutSize = getCurrentMastCutoutSize();
         setError("");
-        setMastStatus(`Download TPF in corso per sector=${sector}...`, "warning");
+        setMastStatus(`Download TPF in corso per sector=${sector}... Timeout automatico dopo circa 90 secondi.`, "warning");
         setButtonBusy(buttonElement, "Download...", true);
         try {
             const { response, data } = await downloadMastTpf(gaiaId, sector, cutoutSize);

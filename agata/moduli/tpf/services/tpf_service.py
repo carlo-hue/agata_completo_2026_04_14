@@ -75,6 +75,71 @@ def _relative_flux_from_gmag(gmag: float | None, reference_gmag: float | None) -
     return max(0.05, math.pow(10.0, -0.4 * (float(gmag) - float(ref))))
 
 
+def _target_has_coordinates(target_info: dict | None) -> bool:
+    if not isinstance(target_info, dict):
+        return False
+    return target_info.get("ra_deg") is not None and target_info.get("dec_deg") is not None
+
+
+def _extract_tpf_center_coordinates(tpf_payload: dict | None) -> tuple[float | None, float | None]:
+    if not isinstance(tpf_payload, dict):
+        return None, None
+
+    pixel_world = ((tpf_payload.get("metadata") or {}).get("pixel_world") or {})
+    ra_grid = pixel_world.get("ra_deg")
+    dec_grid = pixel_world.get("dec_deg")
+    if not isinstance(ra_grid, list) or not isinstance(dec_grid, list) or not ra_grid or not dec_grid:
+        return None, None
+
+    center_row = len(ra_grid) // 2
+    center_col = len(ra_grid[center_row]) // 2 if isinstance(ra_grid[center_row], list) and ra_grid[center_row] else 0
+    try:
+        ra_deg = float(ra_grid[center_row][center_col])
+        dec_deg = float(dec_grid[center_row][center_col])
+    except (TypeError, ValueError, IndexError):
+        return None, None
+    return rounded_or_none(ra_deg, 6), rounded_or_none(dec_deg, 6)
+
+
+def _build_local_only_target_info(gaia_source_id: str, real_tpf: dict | None = None) -> dict:
+    ra_deg, dec_deg = _extract_tpf_center_coordinates(real_tpf)
+    return {
+        "gaia_source_id": gaia_source_id,
+        "ra_deg": ra_deg,
+        "dec_deg": dec_deg,
+        "gmag": None,
+        "catalog": "Gaia unavailable",
+    }
+
+
+def _resolve_target_info_with_fallback(gaia_source_id: str, real_tpf: dict | None = None) -> tuple[dict, dict]:
+    try:
+        target_info = _fetch_gaia_dr3_target(gaia_source_id)
+        return target_info, {
+            "available": True,
+            "mode": "gaia",
+            "message": "Target risolto via Gaia DR3.",
+        }
+    except Exception as err:
+        if real_tpf is None:
+            raise
+        LOGGER.warning(
+            "Gaia target resolution unavailable for gaia_source_id=%s, continuing with local TPF fallback: %s",
+            gaia_source_id,
+            err,
+        )
+        target_info = _build_local_only_target_info(gaia_source_id, real_tpf=real_tpf)
+        message = "Gaia non disponibile: pipeline TPF eseguita in modalita locale sul file TPF reale."
+        if not _target_has_coordinates(target_info):
+            message += " Coordinate target non ricostruibili dal TPF locale."
+        return target_info, {
+            "available": False,
+            "mode": "local-tpf-fallback",
+            "message": message,
+            "error": str(err),
+        }
+
+
 def _fetch_gaia_dr3_target(gaia_source_id: str) -> dict:
     query = f"""
         SELECT source_id, ra, dec, phot_g_mean_mag AS gmag
@@ -96,6 +161,8 @@ def _fetch_gaia_dr3_target(gaia_source_id: str) -> dict:
 
 
 def _fetch_nearby_gaia_sources(target_info: dict, radius_deg: float = NEARBY_RADIUS_DEG) -> list[dict]:
+    if not _target_has_coordinates(target_info):
+        return []
     ra = float(target_info["ra_deg"])
     dec = float(target_info["dec_deg"])
     center = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame="icrs")
@@ -154,36 +221,39 @@ def _resolve_reference_magnitude(target_info: dict, tpf_metadata: dict | None) -
         metadata["reference_mag_source"] = "tpf_header"
         return metadata
 
-    try:
-        coord = SkyCoord(
-            ra=float(target_info["ra_deg"]) * u.deg,
-            dec=float(target_info["dec_deg"]) * u.deg,
-            frame="icrs",
-        )
-        catalog = Catalogs.query_region(coord, radius=(TIC_REFERENCE_RADIUS_ARCSEC * u.arcsec), catalog="TIC")
-        if catalog is not None and len(catalog) > 0:
-            catalog_sorted = catalog
-            if "dstArcSec" in catalog.colnames:
-                catalog_sorted = catalog[np.argsort(catalog["dstArcSec"])]
-            best_row = catalog_sorted[0]
-            tmag_value = best_row["Tmag"] if "Tmag" in catalog.colnames else None
-            if tmag_value is not None:
-                tmag_numeric = rounded_or_none(tmag_value, 6)
-                if tmag_numeric is not None and 0.0 < float(tmag_numeric) < 30.0:
-                    LOGGER.info(
-                        "Using TIC catalog Tmag for gaia_source_id=%s value=%s",
-                        target_info.get("gaia_source_id"),
-                        tmag_numeric,
-                    )
-                    metadata["reference_mag_value"] = float(tmag_numeric)
-                    metadata["reference_mag_band"] = "TESS"
-                    metadata["reference_mag_key"] = "Tmag"
-                    metadata["reference_mag_source"] = "tic_catalog"
-                    if "ID" in catalog.colnames:
-                        metadata["reference_mag_catalog_id"] = str(best_row["ID"])
-                    return metadata
-    except Exception:
-        LOGGER.exception("TIC reference magnitude lookup failed for gaia_source_id=%s", target_info.get("gaia_source_id"))
+    if _target_has_coordinates(target_info):
+        try:
+            coord = SkyCoord(
+                ra=float(target_info["ra_deg"]) * u.deg,
+                dec=float(target_info["dec_deg"]) * u.deg,
+                frame="icrs",
+            )
+            catalog = Catalogs.query_region(coord, radius=(TIC_REFERENCE_RADIUS_ARCSEC * u.arcsec), catalog="TIC")
+            if catalog is not None and len(catalog) > 0:
+                catalog_sorted = catalog
+                if "dstArcSec" in catalog.colnames:
+                    catalog_sorted = catalog[np.argsort(catalog["dstArcSec"])]
+                best_row = catalog_sorted[0]
+                tmag_value = best_row["Tmag"] if "Tmag" in catalog.colnames else None
+                if tmag_value is not None:
+                    tmag_numeric = rounded_or_none(tmag_value, 6)
+                    if tmag_numeric is not None and 0.0 < float(tmag_numeric) < 30.0:
+                        LOGGER.info(
+                            "Using TIC catalog Tmag for gaia_source_id=%s value=%s",
+                            target_info.get("gaia_source_id"),
+                            tmag_numeric,
+                        )
+                        metadata["reference_mag_value"] = float(tmag_numeric)
+                        metadata["reference_mag_band"] = "TESS"
+                        metadata["reference_mag_key"] = "Tmag"
+                        metadata["reference_mag_source"] = "tic_catalog"
+                        if "ID" in catalog.colnames:
+                            metadata["reference_mag_catalog_id"] = str(best_row["ID"])
+                        return metadata
+        except Exception:
+            LOGGER.exception("TIC reference magnitude lookup failed for gaia_source_id=%s", target_info.get("gaia_source_id"))
+    else:
+        LOGGER.info("Skipping TIC reference magnitude lookup for gaia_source_id=%s: coordinates unavailable", target_info.get("gaia_source_id"))
 
     gaia_gmag = target_info.get("gmag")
     if gaia_gmag is not None:
@@ -325,6 +395,9 @@ def _build_target_position(target_info: dict, shape: tuple[int, int] | list[int]
     if wcs is None:
         LOGGER.warning("WCS not available: using center fallback for target position")
         return fallback
+    if not _target_has_coordinates(target_info):
+        LOGGER.warning("Target coordinates unavailable: using center fallback for target position")
+        return fallback
 
     try:
         x, y = wcs.all_world2pix(float(target_info["ra_deg"]), float(target_info["dec_deg"]), 0)
@@ -345,6 +418,8 @@ def _build_target_position(target_info: dict, shape: tuple[int, int] | list[int]
 def _fetch_gaia_overlay_sources(target_info: dict, shape: tuple[int, int] | list[int], wcs) -> tuple[list[dict], str]:
     if wcs is None:
         return [], "Overlay Gaia non disponibile: WCS non disponibile."
+    if not _target_has_coordinates(target_info):
+        return [], "Overlay Gaia non disponibile: coordinate target assenti."
 
     ra = float(target_info["ra_deg"])
     dec = float(target_info["dec_deg"])
@@ -505,15 +580,6 @@ def run_tpf_pipeline(gaia_source_id: str, sector, masks: dict | None = None) -> 
         bool(masks),
     )
     try:
-        target_fetch_started_at = perf_counter()
-        target_info = _fetch_gaia_dr3_target(normalized_gaia_source_id)
-        LOGGER.info(
-            "TPF timing | gaia_source_id=%s sector=%s step=fetch_target elapsed_s=%.3f",
-            normalized_gaia_source_id,
-            normalized_sector,
-            perf_counter() - target_fetch_started_at,
-        )
-
         load_tpf_started_at = perf_counter()
         real_tpf = load_local_tpf(normalized_gaia_source_id, normalized_sector, settings.local_tpf_data_dir, include_frames=False)
         LOGGER.info(
@@ -523,6 +589,15 @@ def run_tpf_pipeline(gaia_source_id: str, sector, masks: dict | None = None) -> 
             perf_counter() - load_tpf_started_at,
             bool(real_tpf),
         )
+        target_fetch_started_at = perf_counter()
+        target_info, gaia_status = _resolve_target_info_with_fallback(normalized_gaia_source_id, real_tpf=real_tpf)
+        LOGGER.info(
+            "TPF timing | gaia_source_id=%s sector=%s step=fetch_target elapsed_s=%.3f gaia_available=%s",
+            normalized_gaia_source_id,
+            normalized_sector,
+            perf_counter() - target_fetch_started_at,
+            gaia_status.get("available"),
+        )
         if real_tpf is not None:
             LOGGER.info("Using real local TPF for gaia_source_id=%s sector=%s", normalized_gaia_source_id, normalized_sector)
             raw_time = real_tpf.pop("_time_values", None)
@@ -531,6 +606,7 @@ def run_tpf_pipeline(gaia_source_id: str, sector, masks: dict | None = None) -> 
             tpf_payload = real_tpf
             reference_mag_started_at = perf_counter()
             tpf_payload["metadata"] = _resolve_reference_magnitude(target_info, tpf_payload.get("metadata"))
+            tpf_payload["metadata"]["gaia_status"] = gaia_status
             LOGGER.info(
                 "TPF timing | gaia_source_id=%s sector=%s step=resolve_reference_magnitude elapsed_s=%.3f reference_band=%s reference_source=%s",
                 normalized_gaia_source_id,
@@ -667,9 +743,10 @@ def run_tpf_pipeline(gaia_source_id: str, sector, masks: dict | None = None) -> 
         )
         return {
             "status": "ok",
-            "message": "Pipeline TPF completata correttamente.",
+            "message": gaia_status.get("message") if not gaia_status.get("available") else "Pipeline TPF completata correttamente.",
             "mode": pipeline_mode,
             "input": {"gaia_source_id": normalized_gaia_source_id, "sector": normalized_sector},
+            "gaia": gaia_status,
             "target": target_info,
             "tpf": tpf_payload,
             "lightcurve": lightcurve,

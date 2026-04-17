@@ -18,6 +18,7 @@ class TpfSettings:
     mast_tpf_download_dir: str = str(LOCAL_TPF_DATA_DIR)
     legacy_tpf_util_path: str = _LEGACY_TPF_UTIL_PATH_RAW
     default_cutout_size: int = 10
+    mast_download_timeout_seconds: int = 90
 
 
 settings = TpfSettings()

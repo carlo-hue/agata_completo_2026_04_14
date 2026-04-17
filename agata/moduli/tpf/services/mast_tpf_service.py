@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import concurrent.futures
 import importlib.util
 import logging
 from functools import lru_cache
@@ -17,6 +18,13 @@ LOGGER = logging.getLogger(__name__)
 
 class MastTpfServiceError(ValueError):
     pass
+
+
+def _normalize_timeout_message(timeout_seconds: int) -> str:
+    return (
+        f"Il download remoto TPF da MAST/TESS non ha completato entro {int(timeout_seconds)} secondi. "
+        "Il servizio e' probabilmente lento o bloccato: riprova piu' tardi oppure prova un altro settore."
+    )
 
 
 def _normalize_remote_error_message(error: Exception) -> str:
@@ -229,9 +237,31 @@ def get_mast_sectors_for_gaia(gaia_id: str, cutout_size: int = 10) -> dict:
     validated_cutout_size = validate_cutout_size(cutout_size, settings.default_cutout_size)
     LOGGER.info("Listing TESS sectors from MAST for gaia_id=%s cutout_size=%s", validated_gaia_id, validated_cutout_size)
 
-    ra, dec, gmag, resolution_message = _resolve_gaia_coordinates(validated_gaia_id)
-    sectors = _get_sector_numbers_for_coordinates(ra, dec)
     downloaded_map = list_downloaded_tpf_sectors(validated_gaia_id, validated_cutout_size)
+    ra = None
+    dec = None
+    gmag = None
+    remote_available = False
+    remote_error = None
+    resolution_message = "TPF locali verificati."
+    sectors: list[int] = []
+
+    try:
+        ra, dec, gmag, resolution_message = _resolve_gaia_coordinates(validated_gaia_id)
+        sectors = _get_sector_numbers_for_coordinates(ra, dec)
+        remote_available = True
+    except Exception as err:
+        remote_error = str(err)
+        LOGGER.warning(
+            "Remote MAST/Gaia sector lookup unavailable for gaia_id=%s, returning local sectors only: %s",
+            validated_gaia_id,
+            err,
+        )
+        sectors = sorted(downloaded_map)
+        if sectors:
+            resolution_message = f"Controllo remoto non disponibile: {remote_error} Mostro solo i TPF gia' presenti localmente."
+        else:
+            resolution_message = f"Controllo remoto non disponibile: {remote_error}"
 
     sector_entries = []
     for sector in sectors:
@@ -250,6 +280,8 @@ def get_mast_sectors_for_gaia(gaia_id: str, cutout_size: int = 10) -> dict:
         "ra": rounded_or_none(ra, 6),
         "dec": rounded_or_none(dec, 6),
         "gmag": rounded_or_none(gmag, 4),
+        "remote_available": remote_available,
+        "remote_error": remote_error,
         "sectors": sector_entries,
         "message": resolution_message,
     }
@@ -289,7 +321,9 @@ def download_tpf_from_mast(gaia_id: str, sector, cutout_size: int = 10, *, reuse
         LOGGER.warning("Falling back to internal lightkurve download for gaia_id=%s: %s", validated_gaia_id, err)
         lightkurve_module = _get_internal_lightkurve()
 
-    try:
+    download_timeout_seconds = max(5, int(settings.mast_download_timeout_seconds))
+
+    def _download_remote_tpf():
         search_result = lightkurve_module.search_tesscut(f"{ra} {dec}", sector=int(validated_sector))
         if search_result is None or len(search_result) == 0:
             raise MastTpfServiceError("TPF non disponibile su MAST/TESS per il settore richiesto")
@@ -298,6 +332,20 @@ def download_tpf_from_mast(gaia_id: str, sector, cutout_size: int = 10, *, reuse
             raise MastTpfServiceError("Download TPF non riuscito")
         target_path.parent.mkdir(parents=True, exist_ok=True)
         tpf.to_fits(str(target_path), overwrite=True)
+
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(_download_remote_tpf)
+    try:
+        future.result(timeout=download_timeout_seconds)
+    except concurrent.futures.TimeoutError as err:
+        LOGGER.warning(
+            "MAST/TESS TPF download timed out for gaia_id=%s sector=%s cutout_size=%s timeout_s=%s",
+            validated_gaia_id,
+            validated_sector,
+            validated_cutout_size,
+            download_timeout_seconds,
+        )
+        raise MastTpfServiceError(_normalize_timeout_message(download_timeout_seconds)) from err
     except MastTpfServiceError:
         raise
     except Exception as err:
@@ -308,6 +356,8 @@ def download_tpf_from_mast(gaia_id: str, sector, cutout_size: int = 10, *, reuse
             validated_cutout_size,
         )
         raise MastTpfServiceError(_normalize_remote_error_message(err)) from err
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
     LOGGER.info(
         "TPF downloaded successfully from MAST for gaia_id=%s sector=%s cutout_size=%s file=%s",

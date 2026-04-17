@@ -110,6 +110,16 @@ def _serialize_json(value) -> str:
     return json.dumps(value, ensure_ascii=True, default=_json_default)
 
 
+def _deserialize_json_field(value, fallback):
+    if value is None:
+        return fallback
+    if isinstance(value, (dict, list)):
+        return value
+    if isinstance(value, (str, bytes, bytearray)):
+        return json.loads(value or fallback)
+    return fallback
+
+
 def _normalize_mask_pixels(mask_value) -> list[list[int]]:
     if not isinstance(mask_value, list):
         return []
@@ -396,6 +406,15 @@ def list_tpf_sessions(*, gaia_source_id: str, sector: int | None = None, limit: 
         if not _table_exists(session, TPF_SESSION_TABLE):
             raise RuntimeError(f"Tabella {TPF_SESSION_TABLE} non disponibile")
 
+        query_params = {
+            "gaia_source_id": int(gaia_source_id),
+            "limit_value": int(limit),
+        }
+        query_where = "WHERE gaia_source_id = :gaia_source_id"
+        if sector is not None:
+            query_where += " AND sector = :sector"
+            query_params["sector"] = int(sector)
+
         query_sql = text(
             f"""
             SELECT
@@ -410,20 +429,12 @@ def list_tpf_sessions(*, gaia_source_id: str, sector: int | None = None, limit: 
                 is_promoted,
                 promoted_points
             FROM {TPF_SESSION_TABLE}
-            WHERE gaia_source_id = :gaia_source_id
-              AND (:sector IS NULL OR sector = :sector)
+            {query_where}
             ORDER BY saved_at DESC, id DESC
             LIMIT :limit_value
             """
         )
-        rows = session.execute(
-            query_sql,
-            {
-                "gaia_source_id": int(gaia_source_id),
-                "sector": int(sector) if sector is not None else None,
-                "limit_value": int(limit),
-            },
-        ).mappings().all()
+        rows = session.execute(query_sql, query_params).mappings().all()
         sessions = []
         for row in rows:
             saved_at = row.get("saved_at")
@@ -475,9 +486,9 @@ def restore_tpf_session(session_id: int) -> dict:
         if row is None:
             raise ValueError(f"Sessione TPF {session_id} non trovata")
 
-        metadata = json.loads(row.get("metadata_json") or "{}")
-        target_pixels = _normalize_mask_pixels(json.loads(row.get("target_mask_json") or "[]"))
-        background_pixels = _normalize_mask_pixels(json.loads(row.get("background_mask_json") or "[]"))
+        metadata = _deserialize_json_field(row.get("metadata_json"), {})
+        target_pixels = _normalize_mask_pixels(_deserialize_json_field(row.get("target_mask_json"), []))
+        background_pixels = _normalize_mask_pixels(_deserialize_json_field(row.get("background_mask_json"), []))
         mask_shape = _infer_mask_shape(metadata, target_pixels, background_pixels)
         manual_masks = {
             "target": _sparse_pixels_to_dense_mask(target_pixels, mask_shape),
@@ -587,6 +598,89 @@ def _update_tpf_session_catalog_name(session_id: int, catalog_name: str) -> None
         session.close()
 
 
+def _refresh_star_summary(session, gaia_source_id: str) -> None:
+    aggregate_row = session.execute(
+        text(
+            f"""
+            SELECT
+                COUNT(*) AS total_points,
+                COUNT(DISTINCT catalogo) AS num_catalogs,
+                STRING_AGG(DISTINCT catalogo, ',' ORDER BY catalogo) AS catalogs,
+                MIN(hjd) AS min_hjd,
+                MAX(hjd) AS max_hjd,
+                MIN(vmag) AS min_mag,
+                MAX(vmag) AS max_mag,
+                MAX(catalog_import_id) AS latest_import_id
+            FROM {TPF_PHOTOMETRY_TABLE}
+            WHERE source_id = :gaia_source_id
+            GROUP BY source_id
+            """
+        ),
+        {"gaia_source_id": int(gaia_source_id)},
+    ).mappings().first()
+
+    if aggregate_row is None:
+        return
+
+    imported_at = None
+    latest_import_id = aggregate_row.get("latest_import_id")
+    if latest_import_id is not None and _table_exists(session, "agata_catalog_imports"):
+        imported_row = session.execute(
+            text(
+                """
+                SELECT created_at
+                FROM agata_catalog_imports
+                WHERE id = :import_id
+                """
+            ),
+            {"import_id": int(latest_import_id)},
+        ).mappings().first()
+        if imported_row is not None:
+            imported_at = imported_row.get("created_at")
+
+    session.execute(
+        text(
+            f"""
+            INSERT INTO {TPF_STAR_TABLE}
+                (gaia_id, total_points, num_catalogs, catalogs,
+                 min_hjd, max_hjd, min_mag, max_mag,
+                 latest_import_id, last_imported_at,
+                 is_known_variable, num_assignments, has_active_project,
+                 created_at, updated_at)
+            VALUES
+                (:gaia_id, :total_points, :num_catalogs, :catalogs,
+                 :min_hjd, :max_hjd, :min_mag, :max_mag,
+                 :latest_import_id, :last_imported_at,
+                 0, 0, 0,
+                 CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT (gaia_id) DO UPDATE SET
+                total_points = EXCLUDED.total_points,
+                num_catalogs = EXCLUDED.num_catalogs,
+                catalogs = EXCLUDED.catalogs,
+                min_hjd = EXCLUDED.min_hjd,
+                max_hjd = EXCLUDED.max_hjd,
+                min_mag = EXCLUDED.min_mag,
+                max_mag = EXCLUDED.max_mag,
+                latest_import_id = EXCLUDED.latest_import_id,
+                last_imported_at = EXCLUDED.last_imported_at,
+                updated_at = CURRENT_TIMESTAMP
+            """
+        ),
+        {
+            "gaia_id": str(gaia_source_id),
+            "total_points": int(aggregate_row["total_points"]),
+            "num_catalogs": int(aggregate_row["num_catalogs"]),
+            "catalogs": aggregate_row.get("catalogs"),
+            "min_hjd": aggregate_row.get("min_hjd"),
+            "max_hjd": aggregate_row.get("max_hjd"),
+            "min_mag": aggregate_row.get("min_mag"),
+            "max_mag": aggregate_row.get("max_mag"),
+            "latest_import_id": latest_import_id,
+            "last_imported_at": imported_at,
+        },
+    )
+
+
 def _promote_photometry_points(
     *,
     session_id: int,
@@ -602,7 +696,7 @@ def _promote_photometry_points(
         {
             "hjd": time_value,
             "vmag": mag_value,
-            "source": int(gaia_source_id),
+            "source_id": int(gaia_source_id),
             "catalogo": catalog_name,
             "catalog_import_id": None,
             "association_id_owner": None,
@@ -616,13 +710,13 @@ def _promote_photometry_points(
             delete_sql = text(
                 f"""
                 DELETE FROM {TPF_PHOTOMETRY_TABLE}
-                WHERE Source = :source AND catalogo LIKE :catalogo_pattern
+                WHERE source_id = :source_id AND catalogo LIKE :catalogo_pattern
                 """
             )
             session.execute(
                 delete_sql,
                 {
-                    "source": int(gaia_source_id),
+                    "source_id": int(gaia_source_id),
                     "catalogo_pattern": f"{catalog_base_name}%",
                 },
             )
@@ -630,44 +724,13 @@ def _promote_photometry_points(
             insert_sql = text(
                 f"""
                 INSERT INTO {TPF_PHOTOMETRY_TABLE}
-                    (hjd, Vmag, Source, catalogo, catalog_import_id, association_id_owner)
+                    (hjd, vmag, source_id, catalogo, catalog_import_id, association_id_owner)
                 VALUES
-                    (:hjd, :vmag, :source, :catalogo, :catalog_import_id, :association_id_owner)
+                    (:hjd, :vmag, :source_id, :catalogo, :catalog_import_id, :association_id_owner)
                 """
             )
             session.execute(insert_sql, rows)
-
-            catalogs_json = _serialize_json([catalog_name])
-            upsert_sql = text(
-                f"""
-                INSERT INTO {TPF_STAR_TABLE}
-                    (gaia_id, total_points, num_catalogs, catalogs, min_hjd, max_hjd, min_mag, max_mag)
-                VALUES
-                    (:gaia_id, :total_points, :num_catalogs, :catalogs, :min_hjd, :max_hjd, :min_mag, :max_mag)
-                ON CONFLICT (gaia_id) DO UPDATE SET
-                    total_points = EXCLUDED.total_points,
-                    num_catalogs = EXCLUDED.num_catalogs,
-                    catalogs = EXCLUDED.catalogs,
-                    min_hjd = EXCLUDED.min_hjd,
-                    max_hjd = EXCLUDED.max_hjd,
-                    min_mag = EXCLUDED.min_mag,
-                    max_mag = EXCLUDED.max_mag,
-                    updated_at = CURRENT_TIMESTAMP
-                """
-            )
-            session.execute(
-                upsert_sql,
-                {
-                    "gaia_id": int(gaia_source_id),
-                    "total_points": len(rows),
-                    "num_catalogs": 1,
-                    "catalogs": catalogs_json,
-                    "min_hjd": min(cleaned_time_bjd),
-                    "max_hjd": max(cleaned_time_bjd),
-                    "min_mag": min(cleaned_mag),
-                    "max_mag": max(cleaned_mag),
-                },
-            )
+            _refresh_star_summary(session, gaia_source_id)
 
         LOGGER.info(
             "Promoted %s TPF photometry points for gaia_source_id=%s sector=%s mask_origin=%s catalog=%s",
@@ -792,8 +855,8 @@ def promote_tpf_curve(payload: dict) -> dict:
                 "cleaning_summary": cleaning_summary,
                 "mapping": {
                     "time_bjd_to_hjd": True,
-                    "mag_tess_anchored_to_Vmag": True,
-                    "gaia_source_id_to_Source": True,
+                    "mag_tess_anchored_to_vmag": True,
+                    "gaia_source_id_to_source_id": True,
                     "time_system": "BJD_TDB",
                     "note": "hjd contains BJD_TDB for TPF catalogs",
                 },
