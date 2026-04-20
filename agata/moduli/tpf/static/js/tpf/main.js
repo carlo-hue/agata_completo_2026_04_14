@@ -129,6 +129,47 @@
         errorBox.classList.remove("hidden");
     }
 
+    async function parseApiJsonResponse(response, fallbackMessage) {
+        const contentType = String(response && response.headers ? (response.headers.get("content-type") || "") : "").toLowerCase();
+        if (contentType.includes("application/json")) {
+            return response.json().catch(() => ({
+                status: "error",
+                ok: false,
+                message: fallbackMessage || "Risposta JSON non valida",
+            }));
+        }
+
+        let responseText = "";
+        try {
+            responseText = await response.text();
+        } catch (_) {
+            responseText = "";
+        }
+
+        if (response.status === 401) {
+            return {
+                status: "error",
+                ok: false,
+                message: "Sessione scaduta o autenticazione mancante. Ricarica AGATA e rifai login.",
+            };
+        }
+
+        if (response.status === 403) {
+            return {
+                status: "error",
+                ok: false,
+                message: "Accesso non autorizzato a questa operazione.",
+            };
+        }
+
+        return {
+            status: "error",
+            ok: false,
+            message: fallbackMessage || `Risposta non JSON ricevuta dal server (HTTP ${response.status}).`,
+            raw_response: responseText ? responseText.slice(0, 300) : "",
+        };
+    }
+
     function setButtonBusy(button, busyText, isBusy) {
         if (!button) {
             return;
@@ -138,6 +179,7 @@
         }
         button.textContent = isBusy ? busyText : button.dataset.originalText;
         button.disabled = isBusy;
+        button.classList.toggle("is-busy", !!isBusy);
     }
 
     function setMastStatus(message, tone) {
@@ -278,18 +320,17 @@
         if (!fixedScaleToggleButton) {
             return;
         }
-        fixedScaleToggleButton.textContent = fixedColorScaleEnabled ? "Scala colore fissa ON" : "Scala colore fissa OFF";
-        fixedScaleToggleButton.classList.toggle("is-off", !fixedColorScaleEnabled);
+        fixedScaleToggleButton.textContent = fixedColorScaleEnabled ? "scala.fissa OFF" : "scala.fissa ON";
         fixedScaleToggleButton.title = fixedColorScaleEnabled
-            ? "Disattiva la scala colore fissa e torna all'autoscale per ogni frame."
-            : "Mantiene la stessa scala colore per tutti i frame della finestra caricata.";
+            ? "Clicca per disattivare la scala fissa."
+            : "Clicca per rendere fissa la scala colore.";
     }
 
     function updateLightcurveDisplayToggleButton() {
         if (!lightcurveDisplayToggleButton) {
             return;
         }
-        lightcurveDisplayToggleButton.textContent = lightcurveDisplayMode === "markers" ? "Linea" : "Punti";
+        lightcurveDisplayToggleButton.textContent = lightcurveDisplayMode === "markers" ? "vis.linea" : "vis.punti";
         lightcurveDisplayToggleButton.title = lightcurveDisplayMode === "markers"
             ? "Passa alla visualizzazione come linea continua."
             : "Passa alla visualizzazione come soli punti.";
@@ -371,11 +412,15 @@
         const currentIndex = availableModes.indexOf(config.mode);
         const nextMode = currentIndex >= 0 ? availableModes[(currentIndex + 1) % availableModes.length] : "flux";
         const labels = {
-            flux: "Flux",
-            mag_ref: referenceBand === "Gaia G" ? "Mag Gaia" : `Mag ${referenceBand}`,
+            flux: "vis.flusso",
+            mag_ref: "vis.mag",
         };
-        lightcurveSeriesToggleButton.textContent = labels[nextMode] || "Flux";
-        lightcurveSeriesToggleButton.title = `Passa alla serie ${labels[nextMode] || "Flux"}`;
+        const nextLabel = labels[nextMode] || "vis.flusso";
+        const descriptiveLabel = nextMode === "mag_ref"
+            ? (referenceBand === "Gaia G" ? "magnitudine Gaia" : `magnitudine ${referenceBand}`)
+            : "flusso";
+        lightcurveSeriesToggleButton.textContent = nextLabel;
+        lightcurveSeriesToggleButton.title = `Passa alla serie ${descriptiveLabel}`;
     }
 
     function recomputeFixedColorScaleRange() {
@@ -1035,27 +1080,24 @@
     }
 
     function updateGaiaOverlayToggleButton() {
-        gaiaOverlayToggleButton.textContent = gaiaOverlayEnabled ? "Gaia ON" : "Gaia OFF";
-        gaiaOverlayToggleButton.classList.toggle("is-off", !gaiaOverlayEnabled);
+        gaiaOverlayToggleButton.textContent = gaiaOverlayEnabled ? "vis.Gaia OFF" : "vis.Gaia ON";
         gaiaOverlayToggleButton.title = gaiaOverlayEnabled
-            ? "Nasconde le sorgenti Gaia per facilitare la selezione dei pixel."
-            : "Mostra di nuovo le sorgenti Gaia sul TPF.";
+            ? "Clicca per togliere la visualizzazione dei cerchietti delle stelle Gaia."
+            : "Clicca per visualizzare i cerchietti delle stelle Gaia.";
     }
 
     function updateGaiaSizeToggleButton() {
-        gaiaSizeToggleButton.textContent = gaiaSizeByMagnitudeEnabled ? "Gaia size ON" : "Gaia size OFF";
-        gaiaSizeToggleButton.classList.toggle("is-off", !gaiaSizeByMagnitudeEnabled);
+        gaiaSizeToggleButton.textContent = gaiaSizeByMagnitudeEnabled ? "size.Gaia OFF" : "size.Gaia ON";
         gaiaSizeToggleButton.title = gaiaSizeByMagnitudeEnabled
-            ? "Usa circoletti Gaia con dimensioni proporzionali alla magnitudine."
-            : "Usa circoletti Gaia di dimensione fissa.";
+            ? "Clicca per togliere la dimensione Gaia proporzionale alla magnitudine."
+            : "Clicca per visualizzare i cerchietti Gaia con dimensioni proporzionali alla magnitudine.";
     }
 
     function updatePixelInfoToggleButton() {
-        pixelInfoToggleButton.textContent = pixelInfoEnabled ? "Info pixel ON" : "Info pixel OFF";
-        pixelInfoToggleButton.classList.toggle("is-off", !pixelInfoEnabled);
+        pixelInfoToggleButton.textContent = pixelInfoEnabled ? "info.pixel OFF" : "info.pixel ON";
         pixelInfoToggleButton.title = pixelInfoEnabled
-            ? "Modalita' Info pixel attiva: clicca un pixel del TPF per vedere flux, RA e Dec."
-            : "Attiva la modalita' Info pixel per vedere flux, RA e Dec al click.";
+            ? "Clicca per togliere le informazioni pixel e tornare alla modifica delle mask."
+            : "Clicca per visualizzare le informazioni del pixel.";
     }
 
     function renderTPF(grid, masks) {
@@ -1581,7 +1623,7 @@
                 cutout_size: cutoutSize,
             }),
         });
-        const data = await response.json().catch(() => ({ ok: false, status: "error", message: "Risposta JSON non valida" }));
+        const data = await parseApiJsonResponse(response, "Risposta JSON non valida durante la ricerca settori MAST");
         output.textContent = JSON.stringify(data, null, 2);
         return { response, data };
     }
@@ -1597,7 +1639,7 @@
                 cutout_size: cutoutSize,
             }),
         });
-        const data = await response.json().catch(() => ({ ok: false, status: "error", message: "Risposta JSON non valida" }));
+        const data = await parseApiJsonResponse(response, "Risposta JSON non valida durante il controllo TPF locali");
         output.textContent = JSON.stringify(data, null, 2);
         return { response, data };
     }

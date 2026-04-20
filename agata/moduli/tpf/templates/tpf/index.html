@@ -77,8 +77,6 @@
                     {% if not (page_context.entrypoint == 'overview' and page_context.gaia_source_id) %}
                     <button type="button" id="findMastSectorsButton" class="button-secondary">Controlla TPF locali</button>
                     {% endif %}
-                    <button type="button" id="saveButton" class="button-secondary" disabled>Salva sessione</button>
-                    <button type="button" id="promoteButton" class="button-secondary" disabled>Promuovi curva</button>
                     {% if not (page_context.entrypoint == 'overview' and page_context.gaia_source_id) %}
                     <div id="mastStatusInfo" class="detail-block detail-text">Usa il Gaia source id sopra, poi premi "Controlla TPF locali".</div>
                     {% else %}
@@ -111,8 +109,6 @@
                     {% if not (page_context.entrypoint == 'overview' and page_context.gaia_source_id) %}
                     <button type="button" id="findMastSectorsButton" class="button-secondary">Controlla TPF locali</button>
                     {% endif %}
-                    <button type="button" id="saveButton" class="button-secondary" disabled>Salva sessione</button>
-                    <button type="button" id="promoteButton" class="button-secondary" disabled>Promuovi curva</button>
                     {% if not (page_context.entrypoint == 'overview' and page_context.gaia_source_id) %}
                     <div id="mastStatusInfo" class="detail-block detail-text">Usa il Gaia source id sopra, poi premi "Controlla TPF locali".</div>
                     {% else %}
@@ -134,20 +130,24 @@
                     <div id="tpfHeaderMeta" class="tpf-header-meta detail-text">gaia_source_id=- | sector=- | ra=- | dec=- | gmag=-</div>
                     <div id="tpfPlot" class="plot-box"></div>
                     <div class="edit-toolbar">
-                        <button type="button" id="gaiaOverlayToggleButton" class="overlay-toggle-button">Gaia overlay ON</button>
-                        <button type="button" id="gaiaSizeToggleButton" class="overlay-toggle-button">Gaia size OFF</button>
-                        <label class="gaia-mag-limit-field" for="gaiaSizeMaxMagInput">
-                            <span>max mag</span>
-                            <input type="number" id="gaiaSizeMaxMagInput" step="0.1" placeholder="auto">
-                        </label>
-                        <button type="button" id="targetModeButton" class="edit-mode-button is-active" disabled>Target</button>
-                        <button type="button" id="backgroundModeButton" class="edit-mode-button" disabled>Background</button>
-                        <button type="button" id="recalcButton" class="button-secondary" disabled>Ricalcola light curve</button>
-                        <button type="button" id="fixedScaleToggleButton" class="overlay-toggle-button fixed-scale-button">Scala colore fissa OFF</button>
-                        <button type="button" id="pixelInfoToggleButton" class="overlay-toggle-button">Info pixel OFF</button>
+                        <div class="tpf-control-row tpf-control-row-primary">
+                            <button type="button" id="targetModeButton" class="edit-mode-button is-active" disabled>mask.target</button>
+                            <button type="button" id="backgroundModeButton" class="edit-mode-button" disabled>mask.back</button>
+                            <button type="button" id="recalcButton" class="button-secondary" disabled>Ricalcola curva</button>
+                        </div>
+                        <div class="tpf-control-row tpf-control-row-secondary">
+                            <button type="button" id="gaiaOverlayToggleButton" class="overlay-toggle-button">vis.Gaia OFF</button>
+                            <button type="button" id="gaiaSizeToggleButton" class="overlay-toggle-button">size.Gaia ON</button>
+                            <label class="gaia-mag-limit-field" for="gaiaSizeMaxMagInput">
+                                <span>mag max</span>
+                                <input type="number" id="gaiaSizeMaxMagInput" step="0.1" placeholder="auto">
+                            </label>
+                            <button type="button" id="fixedScaleToggleButton" class="overlay-toggle-button fixed-scale-button">scala.fissa ON</button>
+                            <button type="button" id="pixelInfoToggleButton" class="overlay-toggle-button">info.pixel ON</button>
+                        </div>
                     </div>
                     <div id="editInfo" class="edit-info detail-text">Editing pixel disponibile solo con TPF reale.</div>
-                    <div id="maskInfo" class="mask-info detail-text">Selezione automatica foreground/background non ancora disponibile.</div>
+                    <div id="maskInfo" class="mask-info detail-text">Selezione automatica mask.target/mask.back non ancora disponibile.</div>
                     <div id="tpfInfo" class="hidden">TPF non ancora richiesto.</div>
                     <div id="overlayInfo" class="hidden">Overlay target/Gaia non ancora disponibile.</div>
                 </section>
@@ -156,22 +156,49 @@
                     <h2>Light Curve</h2>
                     <div id="lightcurveInfo" class="hidden">Light curve non ancora richiesta.</div>
                     <div id="lightcurvePlot" class="plot-box"></div>
-                    <div class="frame-load-toolbar">
-                        <button type="button" id="loadVisibleFramesButton" class="button-secondary" disabled>Carica frame visibili</button>
-                        <span id="loadFramesInfo" class="detail-text">Fai zoom sulla light curve e usa questo pulsante per caricare solo i cadence visibili.</span>
-                        <button type="button" id="lightcurveSeriesToggleButton" class="overlay-toggle-button">Flux</button>
-                        <button type="button" id="lightcurveDisplayToggleButton" class="overlay-toggle-button">Linea</button>
-                        <button type="button" id="lightcurveResetZoomButton" class="overlay-toggle-button">Reset zoom</button>
-                    </div>
-                    <div class="frame-toolbar">
-                        <label for="frameSlider" class="frame-toolbar-label">Frame</label>
-                        <input id="frameSlider" type="range" min="0" max="0" step="1" value="0" disabled>
-                        <div class="frame-toolbar-meta">
-                            <span id="frameIndexLabel" class="detail-text">Frame: - / -</span>
-                            <span id="frameTimeLabel" class="detail-text">Time: -</span>
+                    <div class="lightcurve-subsection lightcurve-subsection-soft">
+                        <div class="lightcurve-subsection-header lightcurve-subsection-header-inline">
+                            <h3>Controlli curva</h3>
+                            <div class="frame-load-toolbar frame-load-toolbar-compact">
+                                <button type="button" id="lightcurveSeriesToggleButton" class="overlay-toggle-button">vis.flusso</button>
+                                <button type="button" id="lightcurveDisplayToggleButton" class="overlay-toggle-button">vis.linea</button>
+                                <button type="button" id="lightcurveResetZoomButton" class="overlay-toggle-button">Reset zoom</button>
+                            </div>
                         </div>
                     </div>
-                    <div id="frameInfo" class="detail-block detail-text">Navigazione frame disponibile solo con TPF reale.</div>
+
+                    <div class="lightcurve-subsection lightcurve-subsection-soft">
+                        <div class="lightcurve-subsection-header">
+                            <div>
+                                <h3>Navigazione curva di luce</h3>
+                                <p class="lightcurve-subsection-copy lightcurve-subsection-copy-inline">Fai zoom sulla light curve e carica solo i cadence visibili per ispezionare i frame corrispondenti.</p>
+                            </div>
+                            <button type="button" id="loadVisibleFramesButton" class="button-secondary" disabled>Carica frame visibili</button>
+                        </div>
+                        <div class="frame-toolbar">
+                            <label for="frameSlider" class="frame-toolbar-label">Frame visualizzato</label>
+                            <input id="frameSlider" type="range" min="0" max="0" step="1" value="0" disabled>
+                            <div class="frame-toolbar-meta">
+                                <span id="frameIndexLabel" class="detail-text">Frame: - / -</span>
+                                <span id="frameTimeLabel" class="detail-text">Time: -</span>
+                            </div>
+                        </div>
+                        <div id="loadFramesInfo" class="detail-text lightcurve-inline-note hidden">Carica i frame solo quando hai definito l'intervallo interessante nel grafico.</div>
+                        <div id="frameInfo" class="detail-block detail-text">Navigazione frame disponibile solo con TPF reale.</div>
+                    </div>
+
+                    <div class="lightcurve-subsection lightcurve-subsection-soft lightcurve-persistence">
+                        <div class="lightcurve-subsection-header">
+                            <div>
+                                <h3>Persistenza sessioni e curva di luce</h3>
+                                <p class="lightcurve-subsection-copy lightcurve-subsection-copy-inline">Salva una sessione tecnica per riprendere l'editing oppure promuovi la curva nel database scientifico.</p>
+                            </div>
+                        </div>
+                        <div class="lightcurve-action-bar">
+                            <button type="button" id="saveButton" class="button-secondary" disabled>Salva sessione</button>
+                            <button type="button" id="promoteButton" class="button-secondary" disabled>Promuovi curva</button>
+                        </div>
+                    </div>
                 </section>
             </section>
             <div id="targetInfo" class="hidden"></div>
