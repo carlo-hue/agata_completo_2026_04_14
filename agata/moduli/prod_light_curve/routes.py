@@ -8,6 +8,7 @@ from .config import settings
 from .services import (
     browse_dataset_directories,
     delete_prod_session,
+    estimate_selection_metrics,
     inspect_ground_dataset,
     list_prod_sessions,
     query_ground_target_candidates,
@@ -114,6 +115,35 @@ def create_blueprint() -> Blueprint:
             return _json_error(str(err), 400)
         except Exception as err:
             LOGGER.exception("Ground photometry failed for %s", dataset_path)
+            return _json_error(str(err), 502)
+        return jsonify(result)
+
+    @bp.post("/api/estimate-selection")
+    def estimate_selection_api():
+        payload = request.get_json(silent=True) or {}
+        if not isinstance(payload, dict):
+            return _json_error("payload JSON non valido", 400)
+        dataset_path = str(payload.get("dataset_path", "")).strip()
+        if not dataset_path:
+            return _json_error("dataset_path mancante", 400)
+        target = payload.get("target") if isinstance(payload.get("target"), dict) else None
+        comparison_stars = payload.get("comparison_stars") if isinstance(payload.get("comparison_stars"), list) else []
+        aperture_radius = payload.get("aperture_radius")
+        annulus_inner_radius = payload.get("annulus_inner_radius")
+        annulus_outer_radius = payload.get("annulus_outer_radius")
+        try:
+            result = estimate_selection_metrics(
+                dataset_path,
+                target=target,
+                comparison_stars=comparison_stars,
+                aperture_radius=float(aperture_radius) if aperture_radius not in (None, "") else None,
+                annulus_inner_radius=float(annulus_inner_radius) if annulus_inner_radius not in (None, "") else None,
+                annulus_outer_radius=float(annulus_outer_radius) if annulus_outer_radius not in (None, "") else None,
+            )
+        except ValueError as err:
+            return _json_error(str(err), 400)
+        except Exception as err:
+            LOGGER.exception("Selection metrics estimation failed for %s", dataset_path)
             return _json_error(str(err), 502)
         return jsonify(result)
 

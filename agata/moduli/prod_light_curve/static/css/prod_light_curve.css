@@ -309,73 +309,10 @@ button:disabled {
     pointer-events: none;
 }
 
-.overlay-svg {
+.overlay-canvas {
     width: 100%;
     height: 100%;
-    overflow: visible;
-}
-
-.overlay-shape {
-    vector-effect: non-scaling-stroke;
-}
-
-.overlay-shape.candidate {
-    fill: rgba(54, 139, 220, 0.5);
-    stroke: #ffffff;
-    stroke-width: 1.4;
-}
-
-.overlay-shape.comparison {
-    fill: rgba(42, 162, 95, 0.75);
-    stroke: #ffffff;
-    stroke-width: 1.6;
-}
-
-.overlay-shape.crosshair {
-    stroke: rgba(255, 205, 104, 0.95);
-    stroke-width: 2;
-    stroke-linecap: round;
-}
-
-.overlay-text {
-    fill: rgba(236, 246, 240, 0.98);
-    font-size: 11px;
-    font-weight: 700;
-    paint-order: stroke;
-    stroke: rgba(0, 0, 0, 0.82);
-    stroke-width: 2.2;
-    stroke-linejoin: round;
-    pointer-events: none;
-    user-select: none;
-}
-
-.overlay-text.comparison-label {
-    fill: rgba(119, 230, 164, 0.98);
-}
-
-.overlay-ring {
-    fill: none;
-    vector-effect: non-scaling-stroke;
-    stroke: rgba(255, 208, 128, 0.96);
-    stroke-width: 0.8;
-}
-
-.overlay-ring.aperture {
-    stroke: rgba(255, 208, 128, 0.96);
-    stroke-width: 0.8;
-}
-
-.overlay-ring.annulus-inner,
-.overlay-ring.annulus-outer {
-    stroke: rgba(255, 208, 128, 0.96);
-    stroke-width: 0.8;
-}
-
-.overlay-ring.comparison.aperture,
-.overlay-ring.comparison.annulus-inner,
-.overlay-ring.comparison.annulus-outer {
-    stroke: rgba(107, 214, 151, 0.92);
-    stroke-width: 0.75;
+    display: block;
 }
 
 .detail-card,

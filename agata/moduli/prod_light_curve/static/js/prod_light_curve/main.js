@@ -22,6 +22,7 @@
     const zoomOutButton = document.getElementById("zoomOutButton");
     const zoomResetButton = document.getElementById("zoomResetButton");
     const referenceImage = document.getElementById("referenceImage");
+    const referenceTitle = document.getElementById("referenceTitle");
     const referenceStage = document.getElementById("referenceStage");
     const referenceViewport = document.getElementById("referenceViewport");
     const referenceOverlay = document.getElementById("referenceOverlay");
@@ -37,7 +38,6 @@
     const lightcurvePlot = document.getElementById("lightcurvePlot");
     const statusBox = document.getElementById("statusBox");
     const errorBox = document.getElementById("errorBox");
-    const outputBox = document.getElementById("outputBox");
     const apertureRadiusInput = document.getElementById("apertureRadiusInput");
     const annulusInnerInput = document.getElementById("annulusInnerInput");
     const annulusOuterInput = document.getElementById("annulusOuterInput");
@@ -45,6 +45,7 @@
     const endpoints = {
         browseUrl: appRoot.dataset.browseUrl,
         inspectUrl: appRoot.dataset.inspectUrl,
+        estimateSelectionUrl: appRoot.dataset.estimateSelectionUrl,
         queryTargetsUrl: appRoot.dataset.queryTargetsUrl,
         runUrl: appRoot.dataset.runUrl,
         saveUrl: appRoot.dataset.saveUrl,
@@ -65,6 +66,7 @@
     let browserVisible = false;
     let browserState = null;
     let selectedBrowserPath = "";
+    let selectionMetricsRequestId = 0;
     const referenceView = {
         scale: 1,
         offsetX: 0,
@@ -124,6 +126,10 @@
         }
         button.disabled = busy;
         button.textContent = busy ? label : button.dataset.originalText;
+    }
+
+    function updateDebugPayload(_) {
+        // Payload tecnico nascosto nella UI corrente.
     }
 
     async function postJson(url, payload) {
@@ -248,18 +254,179 @@
     function renderReference(result) {
         const reference = result && result.reference;
         if (!reference || !reference.preview_png_base64) {
+            referenceTitle.textContent = "Reference image";
             referenceImage.classList.add("hidden");
             referenceViewport.classList.add("hidden");
+            referenceOverlay.classList.add("hidden");
             referenceInfo.textContent = "Nessuna reference image disponibile.";
             return;
         }
+        const observationName = pathDisplayName(currentSelectedDatasetPath());
+        referenceTitle.textContent = observationName
+            ? `Reference image (${observationName})`
+            : "Reference image";
         referenceImage.src = `data:image/png;base64,${reference.preview_png_base64}`;
         referenceImage.classList.remove("hidden");
         referenceViewport.classList.remove("hidden");
+        referenceOverlay.classList.remove("hidden");
         resetReferenceView();
         updateReferenceViewportLayout();
         referenceInfo.textContent = `${reference.source.filename} | ${reference.shape[1]}x${reference.shape[0]} | mode=${reference.mode}`;
         renderOverlay();
+    }
+
+    function nearestDetectedSource(target, result) {
+        const sources = (((result || {}).targeting || {}).detected_sources) || [];
+        if (!target || !sources.length) {
+            return null;
+        }
+        let best = null;
+        let bestDistance = Infinity;
+        sources.forEach(function (item) {
+            const distance = Math.hypot(
+                Number(item.x || 0) - Number(target.x || 0),
+                Number(item.y || 0) - Number(target.y || 0),
+            );
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = item;
+            }
+        });
+        return bestDistance <= 15 ? best : null;
+    }
+
+    function selectionModeLabel(mode) {
+        if (!mode) {
+            return null;
+        }
+        if (mode === "catalog-candidate" || mode === "catalogo") {
+            return "catalogo";
+        }
+        if (mode === "auto-detected") {
+            return "auto";
+        }
+        if (mode === "manuale") {
+            return "manuale";
+        }
+        return String(mode);
+    }
+
+    function describeTarget(target, result) {
+        if (!target) {
+            return "Target non selezionato.";
+        }
+        const parts = [
+            `x=${Number(target.x).toFixed(2)}`,
+            `y=${Number(target.y).toFixed(2)}`,
+        ];
+        if (target.label) {
+            parts.push(String(target.label));
+        }
+        if (target.ra_deg !== undefined && target.dec_deg !== undefined) {
+            parts.push(`RA=${Number(target.ra_deg).toFixed(6)}`);
+            parts.push(`Dec=${Number(target.dec_deg).toFixed(6)}`);
+        }
+        if (target.catalog_name) {
+            parts.push(`catalogo=${target.catalog_name}`);
+        } else if (target.catalog_type) {
+            parts.push(`tipo=${target.catalog_type}`);
+        }
+        const modeLabel = selectionModeLabel(target.mode);
+        if (modeLabel) {
+            parts.push(`selezione=${modeLabel}`);
+        }
+        if (target.peak_adu !== undefined && target.peak_adu !== null && Number.isFinite(Number(target.peak_adu))) {
+            parts.push(`peak=${Number(target.peak_adu).toFixed(1)} ADU`);
+        }
+        if (target.local_max_5x5_adu !== undefined && target.local_max_5x5_adu !== null && Number.isFinite(Number(target.local_max_5x5_adu))) {
+            parts.push(`max 5x5=${Number(target.local_max_5x5_adu).toFixed(1)} ADU`);
+        }
+        if (target.aperture_sum_adu !== undefined && target.aperture_sum_adu !== null && Number.isFinite(Number(target.aperture_sum_adu))) {
+            parts.push(`somma aperture=${Number(target.aperture_sum_adu).toFixed(1)} ADU`);
+        }
+        if (target.annulus_median_adu !== undefined && target.annulus_median_adu !== null && Number.isFinite(Number(target.annulus_median_adu))) {
+            parts.push(`mediana annulus=${Number(target.annulus_median_adu).toFixed(1)} ADU/px`);
+        }
+        if (typeof target.saturated === "boolean") {
+            parts.push(target.saturated ? "saturata" : "non saturata");
+        }
+        return parts.join(" | ");
+    }
+
+    function describeSelectedComparisons(items, result) {
+        if (!items.length) {
+            return "Nessuna comparison star selezionata.";
+        }
+        return items.map(function (item, index) {
+            const parts = [`#${index + 1} x=${Number(item.x).toFixed(2)} y=${Number(item.y).toFixed(2)}`];
+            if (item.peak_adu !== undefined && item.peak_adu !== null && Number.isFinite(Number(item.peak_adu))) {
+                parts.push(`peak=${Number(item.peak_adu).toFixed(1)} ADU`);
+            }
+            if (item.local_max_5x5_adu !== undefined && item.local_max_5x5_adu !== null && Number.isFinite(Number(item.local_max_5x5_adu))) {
+                parts.push(`max 5x5=${Number(item.local_max_5x5_adu).toFixed(1)} ADU`);
+            }
+            if (item.aperture_sum_adu !== undefined && item.aperture_sum_adu !== null && Number.isFinite(Number(item.aperture_sum_adu))) {
+                parts.push(`somma aperture=${Number(item.aperture_sum_adu).toFixed(1)} ADU`);
+            }
+            if (item.annulus_median_adu !== undefined && item.annulus_median_adu !== null && Number.isFinite(Number(item.annulus_median_adu))) {
+                parts.push(`mediana annulus=${Number(item.annulus_median_adu).toFixed(1)} ADU/px`);
+            }
+            if (typeof item.saturated === "boolean") {
+                parts.push(item.saturated ? "saturata" : "non saturata");
+            }
+            return parts.join(" | ");
+        }).join(" ; ");
+    }
+
+    async function refreshSelectionMetrics() {
+        if (!inspectResult) {
+            return;
+        }
+        const datasetPath = currentSelectedDatasetPath();
+        if (!datasetPath) {
+            return;
+        }
+        const hasTarget = !!(
+            selectedTarget
+            && Number.isFinite(Number(selectedTarget.x))
+            && Number.isFinite(Number(selectedTarget.y))
+        );
+        const validComparisons = selectedComparisons.filter(function (item) {
+            return Number.isFinite(Number(item.x)) && Number.isFinite(Number(item.y));
+        });
+        if (!hasTarget && !validComparisons.length) {
+            return;
+        }
+
+        const requestId = ++selectionMetricsRequestId;
+        try {
+            const { response, data } = await postJson(endpoints.estimateSelectionUrl, {
+                dataset_path: datasetPath,
+                target: hasTarget ? selectedTarget : null,
+                comparison_stars: validComparisons,
+                aperture_radius: Number(apertureRadiusInput.value),
+                annulus_inner_radius: Number(annulusInnerInput.value),
+                annulus_outer_radius: Number(annulusOuterInput.value),
+            });
+            if (requestId !== selectionMetricsRequestId) {
+                return;
+            }
+            if (!response.ok || data.status === "error") {
+                return;
+            }
+            if (hasTarget && data.target) {
+                selectedTarget = { ...selectedTarget, ...data.target };
+            }
+            if (validComparisons.length && Array.isArray(data.comparison_stars)) {
+                selectedComparisons = selectedComparisons.map(function (item, index) {
+                    const metrics = data.comparison_stars[index];
+                    return metrics ? { ...item, ...metrics } : item;
+                });
+            }
+            renderTargeting(inspectResult);
+        } catch (_) {
+            // Manteniamo la UI reattiva anche se la stima ADU fallisce.
+        }
     }
 
     function renderOverlay() {
@@ -267,78 +434,90 @@
         if (!inspectResult || !inspectResult.reference) {
             return;
         }
-        const svgNs = "http://www.w3.org/2000/svg";
-        const width = inspectResult.reference.shape[1];
-        const height = inspectResult.reference.shape[0];
+        const width = Number(inspectResult.reference.shape[1]);
+        const height = Number(inspectResult.reference.shape[0]);
+        const stageWidth = referenceStage.clientWidth || 1;
+        const stageHeight = referenceStage.clientHeight || 1;
         const centerPixel = inspectResult.reference.center_pixel || null;
-        const overlaySvg = document.createElementNS(svgNs, "svg");
-        overlaySvg.setAttribute("class", "overlay-svg");
-        overlaySvg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-        overlaySvg.setAttribute("preserveAspectRatio", "none");
-        referenceOverlay.appendChild(overlaySvg);
+        const canvas = document.createElement("canvas");
+        canvas.className = "overlay-canvas";
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.max(1, Math.round(stageWidth * dpr));
+        canvas.height = Math.max(1, Math.round(stageHeight * dpr));
+        canvas.style.width = `${stageWidth}px`;
+        canvas.style.height = `${stageHeight}px`;
+        referenceOverlay.appendChild(canvas);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+            return;
+        }
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, stageWidth, stageHeight);
+        ctx.imageSmoothingEnabled = true;
 
-        function appendSvgShape(tagName, attributes, className) {
-            const element = document.createElementNS(svgNs, tagName);
-            if (className) {
-                element.setAttribute("class", className);
-            }
-            Object.entries(attributes).forEach(function ([key, value]) {
-                element.setAttribute(key, String(value));
-            });
-            overlaySvg.appendChild(element);
-            return element;
+        function imagePixelToStagePoint(x, y) {
+            const sourceX = (Number(x) / width) * referenceView.baseWidth;
+            const sourceY = (Number(y) / height) * referenceView.baseHeight;
+            const localX = ((sourceX - (referenceView.baseWidth / 2)) * referenceView.scale)
+                + referenceView.offsetX
+                + (referenceView.baseWidth / 2);
+            const localY = ((sourceY - (referenceView.baseHeight / 2)) * referenceView.scale)
+                + referenceView.offsetY
+                + (referenceView.baseHeight / 2);
+            return {
+                x: referenceView.baseLeft + localX,
+                y: referenceView.baseTop + localY,
+            };
         }
 
-        function addTextLabel(x, y, text, className) {
-            const label = appendSvgShape("text", {
-                x,
-                y,
-                dx: 10,
-                dy: -10,
-            }, className || "overlay-text");
-            label.textContent = String(text);
+        function imageRadiusToStageRadius(radiusPx) {
+            const scaleX = referenceView.baseWidth / width;
+            return Number(radiusPx) * scaleX * referenceView.scale;
         }
 
-        function addMarker(x, y, klass, title) {
-            appendSvgShape("circle", {
-                cx: x,
-                cy: y,
-                r: klass === "candidate" ? 5 : 7,
-            }, `overlay-shape ${klass}`);
+        function drawCircle(cx, cy, radius, color, lineWidth) {
+            ctx.beginPath();
+            ctx.arc(cx, cy, Math.max(0.01, radius), 0, Math.PI * 2);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = lineWidth;
+            ctx.lineCap = "round";
+            ctx.lineJoin = "round";
+            ctx.stroke();
         }
 
-        function addCrosshair(center) {
+        function drawText(x, y, text, color) {
+            ctx.font = "700 11px system-ui, sans-serif";
+            ctx.lineJoin = "round";
+            ctx.miterLimit = 2;
+            ctx.strokeStyle = "rgba(0, 0, 0, 0.82)";
+            ctx.lineWidth = 3;
+            ctx.strokeText(String(text), x + 10, y - 10);
+            ctx.fillStyle = color;
+            ctx.fillText(String(text), x + 10, y - 10);
+        }
+
+        function drawCrosshair(center) {
             if (!center) {
                 return;
             }
-            const cx = Number(center.x);
-            const cy = Number(center.y);
+            const point = imagePixelToStagePoint(center.x, center.y);
+            const cx = point.x;
+            const cy = point.y;
             const armLength = 15;
             const gap = 7;
-            appendSvgShape("line", {
-                x1: cx - armLength,
-                y1: cy,
-                x2: cx - gap,
-                y2: cy,
-            }, "overlay-shape crosshair");
-            appendSvgShape("line", {
-                x1: cx + gap,
-                y1: cy,
-                x2: cx + armLength,
-                y2: cy,
-            }, "overlay-shape crosshair");
-            appendSvgShape("line", {
-                x1: cx,
-                y1: cy - armLength,
-                x2: cx,
-                y2: cy - gap,
-            }, "overlay-shape crosshair");
-            appendSvgShape("line", {
-                x1: cx,
-                y1: cy + gap,
-                x2: cx,
-                y2: cy + armLength,
-            }, "overlay-shape crosshair");
+            ctx.strokeStyle = "rgba(255, 205, 104, 0.95)";
+            ctx.lineWidth = 2;
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            ctx.moveTo(cx - armLength, cy);
+            ctx.lineTo(cx - gap, cy);
+            ctx.moveTo(cx + gap, cy);
+            ctx.lineTo(cx + armLength, cy);
+            ctx.moveTo(cx, cy - armLength);
+            ctx.lineTo(cx, cy - gap);
+            ctx.moveTo(cx, cy + gap);
+            ctx.lineTo(cx, cy + armLength);
+            ctx.stroke();
         }
 
         function getPhotometryRingRadii() {
@@ -353,20 +532,19 @@
         }
 
         function addRing(x, y, radiusPx, klass, title, role) {
-            appendSvgShape("circle", {
-                cx: x,
-                cy: y,
-                r: radiusPx,
-            }, `overlay-ring ${role || "target"} ${klass}`);
+            const point = imagePixelToStagePoint(x, y);
+            const radius = imageRadiusToStageRadius(radiusPx);
+            const color = role === "comparison"
+                ? "rgba(107, 214, 151, 0.92)"
+                : "rgba(255, 208, 128, 0.96)";
+            const lineWidth = role === "comparison" ? 1.15 : 1.25;
+            drawCircle(point.x, point.y, radius, color, lineWidth);
         }
 
         if (centerVisible) {
-            addCrosshair(centerPixel);
+            drawCrosshair(centerPixel);
         }
 
-        (inspectResult.targeting.target_candidates || []).forEach((item) => {
-            addMarker(item.x, item.y, "candidate", item.label || "candidate");
-        });
         if (selectedTarget) {
             getPhotometryRingRadii().forEach(function (item) {
                 addRing(Number(selectedTarget.x), Number(selectedTarget.y), item.value, item.klass, item.title, "target");
@@ -376,16 +554,15 @@
             getPhotometryRingRadii().forEach(function (ring) {
                 addRing(Number(item.x), Number(item.y), ring.value, ring.klass, `comparison ${index + 1} ${ring.title}`, "comparison");
             });
-            addTextLabel(Number(item.x), Number(item.y), index + 1, "overlay-text comparison-label");
+            const point = imagePixelToStagePoint(item.x, item.y);
+            drawText(point.x, point.y, index + 1, "rgba(119, 230, 164, 0.98)");
         });
     }
 
     function renderTargeting(result) {
         const targeting = result.targeting || {};
         selectedTarget = selectedTarget || targeting.auto_target || null;
-        targetInfo.textContent = selectedTarget
-            ? `x=${Number(selectedTarget.x).toFixed(2)} y=${Number(selectedTarget.y).toFixed(2)}`
-            : "Target non selezionato.";
+        targetInfo.textContent = describeTarget(selectedTarget, result);
 
         const candidates = targeting.target_candidates || [];
         const targetCandidatesLoaded = !!targeting.target_candidates_loaded;
@@ -410,9 +587,10 @@
                         && Number(selectedTarget.y) === Number(item.y);
                 },
                 onClick: function (item) {
-                    selectedTarget = { x: item.x, y: item.y, label: item.label };
+                    selectedTarget = { ...item, x: item.x, y: item.y, label: item.label, mode: "catalogo" };
                     renderTargeting(inspectResult);
                     renderOverlay();
+                    void refreshSelectionMetrics();
                 },
             }));
         }
@@ -422,9 +600,7 @@
         if (!selectedComparisons.length && comparisonCandidatesLoaded) {
             selectedComparisons = ((result.comparison_stars || {}).auto_selected || []).slice();
         }
-        comparisonInfo.textContent = selectedComparisons.length
-            ? `${selectedComparisons.length} stelle selezionate`
-            : "Nessuna comparison star selezionata.";
+        comparisonInfo.textContent = describeSelectedComparisons(selectedComparisons, result);
         comparisonCandidatesBox.innerHTML = "";
         if (!comparisonCandidates.length && selectedComparisons.length) {
             comparisonCandidatesBox.className = "table-box";
@@ -491,7 +667,7 @@
         setStatus("Query target noti in corso...", "status-neutral");
         try {
             const { response, data } = await postJson(endpoints.queryTargetsUrl, { dataset_path: datasetPath });
-            outputBox.textContent = JSON.stringify(data, null, 2);
+            updateDebugPayload(data);
             if (!response.ok || data.status === "error") {
                 setStatus("Query target fallita.", "status-error");
                 setError(data.message || `Errore HTTP ${response.status}`);
@@ -532,7 +708,7 @@
                 dataset_path: datasetPath,
                 target: selectedTarget,
             });
-            outputBox.textContent = JSON.stringify(data, null, 2);
+            updateDebugPayload(data);
             if (!response.ok || data.status === "error") {
                 setStatus("Suggerimento comparison stars fallito.", "status-error");
                 setError(data.message || `Errore HTTP ${response.status}`);
@@ -550,6 +726,7 @@
                 selectedComparisons = ((data.comparison_stars || {}).auto_selected || []).slice();
             }
             renderTargeting(inspectResult);
+            await refreshSelectionMetrics();
             setStatus(data.message || "Comparison stars aggiornate.", "status-success");
         } catch (error) {
             setStatus("Errore di rete durante il suggerimento comparison stars.", "status-error");
@@ -638,6 +815,7 @@
         referenceViewport.style.width = `${referenceView.baseWidth}px`;
         referenceViewport.style.height = `${referenceView.baseHeight}px`;
         applyReferenceTransform();
+        renderOverlay();
     }
 
     function applyReferenceTransform() {
@@ -645,6 +823,7 @@
             return;
         }
         referenceViewport.style.transform = `translate(${referenceView.offsetX}px, ${referenceView.offsetY}px) scale(${referenceView.scale})`;
+        renderOverlay();
     }
 
     function setZoomControlsEnabled(enabled) {
@@ -686,6 +865,7 @@
             selectedComparisons.push({ x: item.x, y: item.y });
         }
         renderTargeting(inspectResult);
+        void refreshSelectionMetrics();
     }
 
     function renderFrameQuality(result) {
@@ -862,7 +1042,7 @@
         frameInclusion = new Set();
         try {
             const { response, data } = await postJson(endpoints.inspectUrl, { dataset_path: datasetPath });
-            outputBox.textContent = JSON.stringify(data, null, 2);
+            updateDebugPayload(data);
             if (!response.ok || data.status === "error") {
                 setStatus("Ispezione FITS fallita.", "status-error");
                 setError(data.message || `Errore HTTP ${response.status}`);
@@ -872,6 +1052,7 @@
             runResult = null;
             renderReference(data);
             renderTargeting(data);
+            await refreshSelectionMetrics();
             renderFrameQuality(data);
             renderPhotometry({ photometry: null });
             await refreshSessions();
@@ -902,7 +1083,7 @@
         try {
             const payload = buildRunPayload();
             const { response, data } = await postJson(endpoints.runUrl, payload);
-            outputBox.textContent = JSON.stringify(data, null, 2);
+            updateDebugPayload(data);
             if (!response.ok || data.status === "error") {
                 setStatus("Fotometria fallita.", "status-error");
                 setError(data.message || `Errore HTTP ${response.status}`);
@@ -937,7 +1118,7 @@
                 ...runResult,
             };
             const { response, data } = await postJson(endpoints.saveUrl, payload);
-            outputBox.textContent = JSON.stringify(data, null, 2);
+            updateDebugPayload(data);
             if (!response.ok || data.status === "error") {
                 setStatus("Salvataggio fallito.", "status-error");
                 setError(data.message || `Errore HTTP ${response.status}`);
@@ -958,7 +1139,7 @@
         setStatus(`Ripristino sessione ${sessionId}...`, "status-neutral");
         try {
             const { response, data } = await postJson(endpoints.restoreUrl, { session_id: sessionId });
-            outputBox.textContent = JSON.stringify(data, null, 2);
+            updateDebugPayload(data);
             if (!response.ok || data.status === "error") {
                 setStatus("Ripristino fallito.", "status-error");
                 setError(data.message || `Errore HTTP ${response.status}`);
@@ -973,6 +1154,7 @@
             frameInclusion = new Set((data.photometry && data.photometry.selection && data.photometry.selection.included_frame_indices) || []);
             renderReference(data);
             renderTargeting(data);
+            await refreshSelectionMetrics();
             renderFrameQuality(data);
             renderPhotometry(data);
             saveButton.disabled = false;
@@ -997,7 +1179,7 @@
         setBusy(button, true, "Eliminazione...");
         try {
             const { response, data } = await postJson(endpoints.deleteUrl, { session_id: sessionId });
-            outputBox.textContent = JSON.stringify(data, null, 2);
+            updateDebugPayload(data);
             if (!response.ok || data.status === "error") {
                 setStatus("Eliminazione fallita.", "status-error");
                 setError(data.message || `Errore HTTP ${response.status}`);
@@ -1023,11 +1205,12 @@
             return;
         }
         if (editMode === "target") {
-            selectedTarget = { x: pixel.x, y: pixel.y, label: "manual-target" };
+            selectedTarget = { x: pixel.x, y: pixel.y, label: "manual-target", mode: "manuale" };
         } else {
             selectedComparisons.push({ x: pixel.x, y: pixel.y });
         }
         renderTargeting(inspectResult);
+        void refreshSelectionMetrics();
     });
 
     referenceStage.addEventListener("wheel", function (event) {
@@ -1129,7 +1312,10 @@
     suggestComparisonsButton.addEventListener("click", handleSuggestComparisons);
     referenceImage.addEventListener("load", updateReferenceViewportLayout);
     window.addEventListener("resize", updateReferenceViewportLayout);
-    apertureRadiusInput.addEventListener("input", renderOverlay);
+    apertureRadiusInput.addEventListener("input", function () {
+        renderOverlay();
+        void refreshSelectionMetrics();
+    });
     annulusInnerInput.addEventListener("input", renderOverlay);
     annulusOuterInput.addEventListener("input", renderOverlay);
 

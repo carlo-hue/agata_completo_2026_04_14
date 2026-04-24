@@ -39,6 +39,7 @@
             class="page-shell"
             data-inspect-url="{{ url_for('prod_light_curve.inspect_api') }}"
             data-browse-url="{{ url_for('prod_light_curve.browse_datasets_api') }}"
+            data-estimate-selection-url="{{ url_for('prod_light_curve.estimate_selection_api') }}"
             data-query-targets-url="{{ url_for('prod_light_curve.query_targets_api') }}"
             data-run-url="{{ url_for('prod_light_curve.run_api') }}"
             data-save-url="{{ url_for('prod_light_curve.save_api') }}"
@@ -72,7 +73,7 @@
             </section>
 
             <section class="panel">
-                <h2>Reference image</h2>
+                <h2 id="referenceTitle">Reference image</h2>
                 <div class="reference-grid">
                     <div class="reference-canvas-wrap">
                         <div class="reference-action-row">
@@ -90,8 +91,8 @@
                         <div id="referenceStage" class="reference-stage">
                             <div id="referenceViewport" class="reference-viewport hidden">
                                 <img id="referenceImage" alt="Reference image" class="reference-image hidden">
-                                <div id="referenceOverlay" class="reference-overlay"></div>
                             </div>
+                            <div id="referenceOverlay" class="reference-overlay hidden"></div>
                         </div>
                         <div id="referenceInfo" class="detail-text">Nessuna reference image disponibile.</div>
                     </div>
@@ -155,11 +156,6 @@
                 <h2>Stato</h2>
                 <div id="statusBox" class="status-box status-neutral">In attesa di input.</div>
                 <div id="errorBox" class="status-box status-error hidden"></div>
-            </section>
-
-            <section class="panel">
-                <h2>Payload tecnico</h2>
-                <pre id="outputBox" class="output-box">{}</pre>
             </section>
         </main>
     </div>

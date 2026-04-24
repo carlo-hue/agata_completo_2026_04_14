@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import math
+
+import numpy as np
+
 from ..config import settings
 from .catalog_service import build_target_candidates
 from .dataset_service import build_dataset_summary
@@ -51,6 +55,108 @@ def _build_comparison_payload(detected_sources: list[dict], target: dict | None)
             if item.get("auto_selected")
         ],
         "comparison_candidates_loaded": True,
+    }
+
+
+def _estimate_point_metrics(
+    reference_frame: dict,
+    point: dict,
+    aperture_radius: float,
+    annulus_inner_radius: float,
+    annulus_outer_radius: float,
+) -> dict | None:
+    if not isinstance(point, dict) or point.get("x") is None or point.get("y") is None:
+        return None
+
+    data = np.asarray(reference_frame["data"], dtype=float)
+    x = float(point["x"])
+    y = float(point["y"])
+    radius = max(1.0, float(aperture_radius))
+    annulus_inner = max(radius, float(annulus_inner_radius))
+    annulus_outer = max(annulus_inner, float(annulus_outer_radius))
+    sampling_radius = max(radius, annulus_outer, 2.0)
+    x0 = int(round(x))
+    y0 = int(round(y))
+    y1 = max(0, int(math.floor(y - sampling_radius)))
+    y2 = min(data.shape[0], int(math.ceil(y + sampling_radius)) + 1)
+    x1 = max(0, int(math.floor(x - sampling_radius)))
+    x2 = min(data.shape[1], int(math.ceil(x + sampling_radius)) + 1)
+    stamp = np.asarray(data[y1:y2, x1:x2], dtype=float)
+    if stamp.size == 0:
+        return None
+
+    yy, xx = np.indices(stamp.shape)
+    local_x = xx + x1
+    local_y = yy + y1
+    distance = np.hypot(local_x - x, local_y - y)
+    aperture_mask = distance <= radius
+    aperture_values = stamp[aperture_mask]
+    finite_aperture = aperture_values[np.isfinite(aperture_values)]
+    if finite_aperture.size == 0:
+        return None
+
+    box_y1 = max(0, y0 - 2)
+    box_y2 = min(data.shape[0], y0 + 3)
+    box_x1 = max(0, x0 - 2)
+    box_x2 = min(data.shape[1], x0 + 3)
+    local_box = np.asarray(data[box_y1:box_y2, box_x1:box_x2], dtype=float)
+    local_box_finite = local_box[np.isfinite(local_box)]
+
+    annulus_mask = (distance >= annulus_inner) & (distance <= annulus_outer)
+    annulus_values = stamp[annulus_mask]
+    finite_annulus = annulus_values[np.isfinite(annulus_values)]
+
+    saturated_level = reference_frame["header"].get("SATURATE")
+    try:
+        saturated_level = float(saturated_level)
+    except (TypeError, ValueError):
+        saturated_level = None
+
+    peak_adu = float(np.nanmax(finite_aperture))
+    local_max_5x5_adu = float(np.nanmax(local_box_finite)) if local_box_finite.size else None
+    aperture_sum_adu = float(np.nansum(finite_aperture))
+    annulus_sum_adu = float(np.nansum(finite_annulus)) if finite_annulus.size else None
+    annulus_median_adu = float(np.nanmedian(finite_annulus)) if finite_annulus.size else None
+    return {
+        "x": point.get("x"),
+        "y": point.get("y"),
+        "peak_adu": round(peak_adu, 3),
+        "local_max_5x5_adu": round(local_max_5x5_adu, 3) if local_max_5x5_adu is not None else None,
+        "aperture_sum_adu": round(aperture_sum_adu, 3),
+        "annulus_sum_adu": round(annulus_sum_adu, 3) if annulus_sum_adu is not None else None,
+        "annulus_median_adu": round(annulus_median_adu, 3) if annulus_median_adu is not None else None,
+        "saturated": bool(peak_adu >= saturated_level) if saturated_level and math.isfinite(saturated_level) else None,
+        "saturation_level_adu": round(float(saturated_level), 3) if saturated_level and math.isfinite(saturated_level) else None,
+    }
+
+
+def estimate_selection_metrics(
+    dataset_path: str,
+    *,
+    target: dict | None = None,
+    comparison_stars: list[dict] | None = None,
+    aperture_radius: float | None = None,
+    annulus_inner_radius: float | None = None,
+    annulus_outer_radius: float | None = None,
+) -> dict:
+    inspection = _build_base_inspection(dataset_path)
+    radius = aperture_radius if aperture_radius is not None else settings.default_aperture_radius
+    annulus_inner = annulus_inner_radius if annulus_inner_radius is not None else settings.default_annulus_inner_radius
+    annulus_outer = annulus_outer_radius if annulus_outer_radius is not None else settings.default_annulus_outer_radius
+    target_metrics = _estimate_point_metrics(inspection["reference_frame"], target, radius, annulus_inner, annulus_outer)
+    comparison_metrics = [
+        item
+        for item in (
+            _estimate_point_metrics(inspection["reference_frame"], point, radius, annulus_inner, annulus_outer)
+            for point in (comparison_stars or [])
+        )
+        if item is not None
+    ]
+    return {
+        "status": "ok",
+        "message": "Metriche ADU stimate sulla reference image.",
+        "target": target_metrics,
+        "comparison_stars": comparison_metrics,
     }
 
 
