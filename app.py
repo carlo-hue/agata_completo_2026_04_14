@@ -71,6 +71,9 @@ from agata.help import help_bp
 # Import lightcurve blueprint
 from agata.moduli.lightcurve import create_blueprint as create_lightcurve_blueprint
 
+# Import prod_light_curve blueprint
+from agata.moduli.prod_light_curve import prod_light_curve_bp
+
 # Import tess_tce blueprint
 from agata.moduli.tess_tce import create_blueprint as create_tess_tce_blueprint
 
@@ -218,6 +221,7 @@ app.register_blueprint(galassie_nane_bp)  # url_prefix defined in __init__.py
 app.register_blueprint(catalog_bp)  # url_prefix defined in __init__.py
 app.register_blueprint(help_bp)     # url_prefix='/agata/help'
 app.register_blueprint(create_lightcurve_blueprint())  # url_prefix='/agata/lightcurve'
+app.register_blueprint(prod_light_curve_bp)  # url_prefix defined in __init__.py (/agata/prod-light-curve)
 app.register_blueprint(create_tess_tce_blueprint(), url_prefix='/agata/tess-tce')
 app.register_blueprint(tpf_bp)  # url_prefix defined in __init__.py (/agata/tpf)
 

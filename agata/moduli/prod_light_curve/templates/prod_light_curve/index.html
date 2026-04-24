@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ module_title }}</title>
+    <link rel="stylesheet" href="{{ url_for('prod_light_curve.static', filename='css/prod_light_curve.css') }}">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+</head>
+<body>
+    <aside class="module-sidebar">
+        <div class="module-sidebar-title">Moduli Principali</div>
+        <nav class="module-nav">
+            <a href="{{ module_links.admin }}" class="module-nav-link"><i class="bi bi-wrench"></i>Admin</a>
+            <a href="{{ module_links.variable_stars }}" class="module-nav-link"><i class="bi bi-graph-up"></i>Editor Stelle</a>
+            <a href="{{ module_links.exoplanets }}" class="module-nav-link"><i class="bi bi-globe"></i>Esopianeti</a>
+            <a href="{{ module_links.field_star_map }}" class="module-nav-link"><i class="bi bi-bullseye"></i>Field Star Map</a>
+            <a href="{{ module_links.galassie_nane }}" class="module-nav-link"><i class="bi bi-stars"></i>Galassie Nane</a>
+            <a href="{{ module_links.tess_tce }}" class="module-nav-link"><i class="bi bi-search-heart"></i>TESS TCE</a>
+            <a href="{{ module_links.tpf }}" class="module-nav-link"><i class="bi bi-grid-3x3-gap"></i>TPF</a>
+            <a href="{{ module_links.prod_light_curve }}" class="module-nav-link active"><i class="bi bi-brightness-high"></i>Prod LC</a>
+        </nav>
+    </aside>
+
+    <div class="app-shell">
+        <header class="module-header">
+            <h1>{{ module_title }}</h1>
+            <nav>
+                <a href="{{ module_links.variable_stars }}">Stelle Variabili</a>
+                <a href="{{ module_links.exoplanets }}">Esopianeti</a>
+                <a href="{{ module_links.tpf }}">TPF</a>
+                <a href="{{ module_links.prod_light_curve }}" class="active">Ground FITS</a>
+            </nav>
+        </header>
+
+        <main
+            id="prodLightCurveApp"
+            class="page-shell"
+            data-inspect-url="{{ url_for('prod_light_curve.inspect_api') }}"
+            data-browse-url="{{ url_for('prod_light_curve.browse_datasets_api') }}"
+            data-query-targets-url="{{ url_for('prod_light_curve.query_targets_api') }}"
+            data-run-url="{{ url_for('prod_light_curve.run_api') }}"
+            data-save-url="{{ url_for('prod_light_curve.save_api') }}"
+            data-suggest-comparisons-url="{{ url_for('prod_light_curve.suggest_comparisons_api') }}"
+            data-sessions-url="{{ url_for('prod_light_curve.sessions_api') }}"
+            data-restore-url="{{ url_for('prod_light_curve.restore_api') }}"
+            data-delete-url="{{ url_for('prod_light_curve.delete_api') }}"
+            data-default-aperture-radius="{{ default_aperture_radius }}"
+            data-default-annulus-inner-radius="{{ default_annulus_inner_radius }}"
+            data-default-annulus-outer-radius="{{ default_annulus_outer_radius }}"
+            data-default-dataset-root="{{ default_dataset_root }}"
+        >
+            <section class="panel panel-intro">
+                <div class="toolbar-row">
+                    <button id="browseDatasetsButton" type="button" class="button-secondary">Seleziona osservazione</button>
+                    <div id="datasetSelectionBanner" class="selection-banner field-wide">nessuna osservazione selezionata</div>
+                    <button id="inspectButton" type="button" class="button-primary" disabled>Selezione reference image</button>
+                </div>
+                <div id="datasetBrowserPanel" class="dataset-browser hidden">
+                    <div class="dataset-browser-layout">
+                        <div>
+                            <div id="datasetBrowserList" class="frame-quality-box empty-state">Nessuna cartella caricata.</div>
+                        </div>
+                        <div class="dataset-browser-detail">
+                            <h3>Osservazione selezionata</h3>
+                            <div id="datasetSelectionSummary" class="detail-text">Nessuna cartella selezionata.</div>
+                            <div id="datasetSelectionDetails" class="detail-text">Seleziona una voce dalla lista per vedere i dettagli del dataset.</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>Reference image</h2>
+                <div class="reference-grid">
+                    <div class="reference-canvas-wrap">
+                        <div class="reference-action-row">
+                            <button id="runButton" type="button" class="button-secondary" disabled>Esegui fotometria</button>
+                            <button id="saveButton" type="button" class="button-secondary" disabled>Salva sessione</button>
+                        </div>
+                        <div class="reference-toolbar">
+                            <button id="selectTargetButton" type="button" class="edit-mode-button is-active" disabled>click.target</button>
+                            <button id="addComparisonButton" type="button" class="edit-mode-button" disabled>click.comp</button>
+                            <button id="toggleCenterButton" type="button" class="edit-mode-button" disabled>vis.centro</button>
+                            <button id="zoomInButton" type="button" class="edit-mode-button" disabled>zoom +</button>
+                            <button id="zoomOutButton" type="button" class="edit-mode-button" disabled>zoom -</button>
+                            <button id="zoomResetButton" type="button" class="edit-mode-button" disabled>reset view</button>
+                        </div>
+                        <div id="referenceStage" class="reference-stage">
+                            <div id="referenceViewport" class="reference-viewport hidden">
+                                <img id="referenceImage" alt="Reference image" class="reference-image hidden">
+                                <div id="referenceOverlay" class="reference-overlay"></div>
+                            </div>
+                        </div>
+                        <div id="referenceInfo" class="detail-text">Nessuna reference image disponibile.</div>
+                    </div>
+                    <div class="reference-side">
+                        <div class="detail-card">
+                            <h3>Parametri fotometrici</h3>
+                            <div class="parameter-grid">
+                                <label class="field-block field-compact">
+                                    <span>Aperture radius</span>
+                                    <input id="apertureRadiusInput" type="number" step="0.5" value="{{ default_aperture_radius }}">
+                                </label>
+                                <label class="field-block field-compact">
+                                    <span>Annulus inner</span>
+                                    <input id="annulusInnerInput" type="number" step="0.5" value="{{ default_annulus_inner_radius }}">
+                                </label>
+                                <label class="field-block field-compact">
+                                    <span>Annulus outer</span>
+                                    <input id="annulusOuterInput" type="number" step="0.5" value="{{ default_annulus_outer_radius }}">
+                                </label>
+                            </div>
+                        </div>
+                        <div class="detail-card">
+                            <h3>Target</h3>
+                            <div id="targetInfo" class="detail-text">Target non selezionato.</div>
+                            <div class="detail-card-actions">
+                                <button id="queryTargetsButton" type="button" class="button-secondary" disabled>Cerca target noti</button>
+                            </div>
+                            <div id="targetCandidatesBox" class="list-box empty-state">Nessun candidato catalogato.</div>
+                        </div>
+                        <div class="detail-card">
+                            <h3>Comparison stars</h3>
+                            <div id="comparisonInfo" class="detail-text">Nessuna comparison star selezionata.</div>
+                            <div class="detail-card-actions">
+                                <button id="suggestComparisonsButton" type="button" class="button-secondary" disabled>Suggerisci comparison stars</button>
+                            </div>
+                            <div id="comparisonCandidatesBox" class="list-box empty-state">Nessun candidato disponibile.</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="grid-layout">
+                <section class="panel">
+                    <h2>Frame quality</h2>
+                    <div id="frameQualitySummary" class="detail-text">Frame quality non ancora calcolata.</div>
+                    <div id="frameQualityBox" class="frame-quality-box empty-state">Nessun frame disponibile.</div>
+                </section>
+                <section class="panel">
+                    <h2>Sessioni tecniche</h2>
+                    <div id="sessionsBox" class="frame-quality-box empty-state">Nessuna sessione caricata.</div>
+                </section>
+            </section>
+
+            <section class="panel">
+                <h2>Curva di luce</h2>
+                <div id="photometryInfo" class="detail-text">Fotometria non ancora eseguita.</div>
+                <div id="lightcurvePlot" class="plot-box"></div>
+            </section>
+
+            <section class="panel panel-status">
+                <h2>Stato</h2>
+                <div id="statusBox" class="status-box status-neutral">In attesa di input.</div>
+                <div id="errorBox" class="status-box status-error hidden"></div>
+            </section>
+
+            <section class="panel">
+                <h2>Payload tecnico</h2>
+                <pre id="outputBox" class="output-box">{}</pre>
+            </section>
+        </main>
+    </div>
+
+    <script src="{{ url_for('prod_light_curve.static', filename='js/prod_light_curve/main.js') }}"></script>
+</body>
+</html>
