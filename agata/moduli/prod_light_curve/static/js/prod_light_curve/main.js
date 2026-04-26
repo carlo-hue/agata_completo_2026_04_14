@@ -319,6 +319,16 @@
             `x=${Number(target.x).toFixed(2)}`,
             `y=${Number(target.y).toFixed(2)}`,
         ];
+        if (
+            target.refined_x !== undefined && target.refined_y !== undefined
+            && target.refined_x !== null && target.refined_y !== null
+        ) {
+            parts.push(`xref=${Number(target.refined_x).toFixed(2)}`);
+            parts.push(`yref=${Number(target.refined_y).toFixed(2)}`);
+        }
+        if (target.centroid_shift_px !== undefined && target.centroid_shift_px !== null && Number.isFinite(Number(target.centroid_shift_px))) {
+            parts.push(`shift=${Number(target.centroid_shift_px).toFixed(2)} px`);
+        }
         if (target.label) {
             parts.push(String(target.label));
         }
@@ -335,14 +345,23 @@
         if (modeLabel) {
             parts.push(`selezione=${modeLabel}`);
         }
+        if (target.raw_peak_adu !== undefined && target.raw_peak_adu !== null && Number.isFinite(Number(target.raw_peak_adu))) {
+            parts.push(`peak click=${Number(target.raw_peak_adu).toFixed(1)} ADU`);
+        }
         if (target.peak_adu !== undefined && target.peak_adu !== null && Number.isFinite(Number(target.peak_adu))) {
-            parts.push(`peak=${Number(target.peak_adu).toFixed(1)} ADU`);
+            parts.push(`peak ref=${Number(target.peak_adu).toFixed(1)} ADU`);
         }
         if (target.local_max_5x5_adu !== undefined && target.local_max_5x5_adu !== null && Number.isFinite(Number(target.local_max_5x5_adu))) {
             parts.push(`max 5x5=${Number(target.local_max_5x5_adu).toFixed(1)} ADU`);
         }
         if (target.aperture_sum_adu !== undefined && target.aperture_sum_adu !== null && Number.isFinite(Number(target.aperture_sum_adu))) {
-            parts.push(`somma aperture=${Number(target.aperture_sum_adu).toFixed(1)} ADU`);
+            parts.push(`somma lorda aperture=${Number(target.aperture_sum_adu).toFixed(1)} ADU`);
+        }
+        if (target.aperture_net_adu !== undefined && target.aperture_net_adu !== null && Number.isFinite(Number(target.aperture_net_adu))) {
+            parts.push(`somma netta aperture=${Number(target.aperture_net_adu).toFixed(1)} ADU`);
+        }
+        if (target.annulus_mean_adu !== undefined && target.annulus_mean_adu !== null && Number.isFinite(Number(target.annulus_mean_adu))) {
+            parts.push(`media annulus=${Number(target.annulus_mean_adu).toFixed(1)} ADU/px`);
         }
         if (target.annulus_median_adu !== undefined && target.annulus_median_adu !== null && Number.isFinite(Number(target.annulus_median_adu))) {
             parts.push(`mediana annulus=${Number(target.annulus_median_adu).toFixed(1)} ADU/px`);
@@ -359,14 +378,37 @@
         }
         return items.map(function (item, index) {
             const parts = [`#${index + 1} x=${Number(item.x).toFixed(2)} y=${Number(item.y).toFixed(2)}`];
+            if (
+                item.refined_x !== undefined && item.refined_y !== undefined
+                && item.refined_x !== null && item.refined_y !== null
+            ) {
+                parts.push(`xref=${Number(item.refined_x).toFixed(2)}`);
+                parts.push(`yref=${Number(item.refined_y).toFixed(2)}`);
+            }
+            if (item.centroid_shift_px !== undefined && item.centroid_shift_px !== null && Number.isFinite(Number(item.centroid_shift_px))) {
+                parts.push(`shift=${Number(item.centroid_shift_px).toFixed(2)} px`);
+            }
+            if (item.ra_deg !== undefined && item.dec_deg !== undefined && item.ra_deg !== null && item.dec_deg !== null) {
+                parts.push(`RA=${Number(item.ra_deg).toFixed(6)}`);
+                parts.push(`Dec=${Number(item.dec_deg).toFixed(6)}`);
+            }
+            if (item.raw_peak_adu !== undefined && item.raw_peak_adu !== null && Number.isFinite(Number(item.raw_peak_adu))) {
+                parts.push(`peak click=${Number(item.raw_peak_adu).toFixed(1)} ADU`);
+            }
             if (item.peak_adu !== undefined && item.peak_adu !== null && Number.isFinite(Number(item.peak_adu))) {
-                parts.push(`peak=${Number(item.peak_adu).toFixed(1)} ADU`);
+                parts.push(`peak ref=${Number(item.peak_adu).toFixed(1)} ADU`);
             }
             if (item.local_max_5x5_adu !== undefined && item.local_max_5x5_adu !== null && Number.isFinite(Number(item.local_max_5x5_adu))) {
                 parts.push(`max 5x5=${Number(item.local_max_5x5_adu).toFixed(1)} ADU`);
             }
             if (item.aperture_sum_adu !== undefined && item.aperture_sum_adu !== null && Number.isFinite(Number(item.aperture_sum_adu))) {
-                parts.push(`somma aperture=${Number(item.aperture_sum_adu).toFixed(1)} ADU`);
+                parts.push(`somma lorda aperture=${Number(item.aperture_sum_adu).toFixed(1)} ADU`);
+            }
+            if (item.aperture_net_adu !== undefined && item.aperture_net_adu !== null && Number.isFinite(Number(item.aperture_net_adu))) {
+                parts.push(`somma netta aperture=${Number(item.aperture_net_adu).toFixed(1)} ADU`);
+            }
+            if (item.annulus_mean_adu !== undefined && item.annulus_mean_adu !== null && Number.isFinite(Number(item.annulus_mean_adu))) {
+                parts.push(`media annulus=${Number(item.annulus_mean_adu).toFixed(1)} ADU/px`);
             }
             if (item.annulus_median_adu !== undefined && item.annulus_median_adu !== null && Number.isFinite(Number(item.annulus_median_adu))) {
                 parts.push(`mediana annulus=${Number(item.annulus_median_adu).toFixed(1)} ADU/px`);
@@ -455,9 +497,13 @@
         ctx.clearRect(0, 0, stageWidth, stageHeight);
         ctx.imageSmoothingEnabled = true;
 
+        function fitsYToDisplayY(y) {
+            return (height - 1) - Number(y);
+        }
+
         function imagePixelToStagePoint(x, y) {
             const sourceX = (Number(x) / width) * referenceView.baseWidth;
-            const sourceY = (Number(y) / height) * referenceView.baseHeight;
+            const sourceY = (fitsYToDisplayY(y) / height) * referenceView.baseHeight;
             const localX = ((sourceX - (referenceView.baseWidth / 2)) * referenceView.scale)
                 + referenceView.offsetX
                 + (referenceView.baseWidth / 2);
@@ -1007,7 +1053,8 @@
         const sourceX = ((centeredX - referenceView.offsetX) / referenceView.scale) + (referenceView.baseWidth / 2);
         const sourceY = ((centeredY - referenceView.offsetY) / referenceView.scale) + (referenceView.baseHeight / 2);
         const pixelX = (sourceX / referenceView.baseWidth) * inspectResult.reference.shape[1];
-        const pixelY = (sourceY / referenceView.baseHeight) * inspectResult.reference.shape[0];
+        const displayY = (sourceY / referenceView.baseHeight) * inspectResult.reference.shape[0];
+        const pixelY = (inspectResult.reference.shape[0] - 1) - displayY;
         if (
             !Number.isFinite(pixelX) || !Number.isFinite(pixelY)
             || pixelX < 0 || pixelY < 0

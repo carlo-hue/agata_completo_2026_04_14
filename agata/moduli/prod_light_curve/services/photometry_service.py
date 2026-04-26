@@ -29,6 +29,72 @@ def normalize_photometry_params(payload: dict, defaults: dict) -> dict:
     }
 
 
+def measure_reference_aperture_metrics(
+    reference_frame: dict,
+    *,
+    points: list[dict],
+    params: dict,
+) -> list[dict]:
+    data = np.asarray(reference_frame["data"], dtype=float)
+    valid_items = []
+    for item in points:
+        if not isinstance(item, dict) or item.get("x") is None or item.get("y") is None:
+            continue
+        valid_items.append({
+            "raw": item,
+            "point": (float(item["x"]), float(item["y"])),
+        })
+    if not valid_items:
+        return []
+
+    refined_points = [_refine_centroid(data, item["point"]) for item in valid_items]
+    aperture = CircularAperture(refined_points, r=float(params["aperture_radius"]))
+    annulus = CircularAnnulus(
+        refined_points,
+        r_in=float(params["annulus_inner_radius"]),
+        r_out=float(params["annulus_outer_radius"]),
+    )
+    phot_ap = aperture_photometry(data, aperture)
+    phot_an = aperture_photometry(data, annulus)
+    background_mean = np.asarray(phot_an["aperture_sum"] / annulus.area, dtype=float)
+    net_flux = np.asarray(phot_ap["aperture_sum"] - background_mean * aperture.area, dtype=float)
+
+    results = []
+    for index, item in enumerate(valid_items):
+        refined_point = refined_points[index]
+        raw_diagnostics = _local_point_diagnostics(
+            data,
+            item["point"],
+            aperture_radius=float(params["aperture_radius"]),
+            annulus_inner_radius=float(params["annulus_inner_radius"]),
+            annulus_outer_radius=float(params["annulus_outer_radius"]),
+        )
+        diagnostics = _local_point_diagnostics(
+            data,
+            refined_point,
+            aperture_radius=float(params["aperture_radius"]),
+            annulus_inner_radius=float(params["annulus_inner_radius"]),
+            annulus_outer_radius=float(params["annulus_outer_radius"]),
+        )
+        results.append({
+            "x": rounded_or_none(item["point"][0], 3),
+            "y": rounded_or_none(item["point"][1], 3),
+            "refined_x": rounded_or_none(refined_point[0], 3),
+            "refined_y": rounded_or_none(refined_point[1], 3),
+            "centroid_shift_px": rounded_or_none(
+                float(math.hypot(refined_point[0] - item["point"][0], refined_point[1] - item["point"][1])),
+                4,
+            ),
+            "aperture_sum_adu": rounded_or_none(float(phot_ap["aperture_sum"][index]), 3),
+            "aperture_net_adu": rounded_or_none(float(net_flux[index]), 3),
+            "annulus_mean_adu": rounded_or_none(float(background_mean[index]), 3),
+            "raw_peak_adu": raw_diagnostics.get("peak_adu"),
+            "raw_local_max_5x5_adu": raw_diagnostics.get("local_max_5x5_adu"),
+            **diagnostics,
+        })
+    return results
+
+
 def run_differential_photometry(
     dataset_summary: dict,
     *,
@@ -162,3 +228,51 @@ def _refine_centroid(data: np.ndarray, point: tuple[float, float], radius: int =
     cy, cx = centroid_com(stamp)
     return float(x1 + cx), float(y1 + cy)
 
+
+def _local_point_diagnostics(
+    data: np.ndarray,
+    point: tuple[float, float],
+    *,
+    aperture_radius: float,
+    annulus_inner_radius: float,
+    annulus_outer_radius: float,
+) -> dict:
+    x = float(point[0])
+    y = float(point[1])
+    radius = max(1.0, float(aperture_radius))
+    annulus_inner = max(radius, float(annulus_inner_radius))
+    annulus_outer = max(annulus_inner, float(annulus_outer_radius))
+    sampling_radius = max(radius, annulus_outer, 2.0)
+    x0 = int(round(x))
+    y0 = int(round(y))
+    y1 = max(0, int(math.floor(y - sampling_radius)))
+    y2 = min(data.shape[0], int(math.ceil(y + sampling_radius)) + 1)
+    x1 = max(0, int(math.floor(x - sampling_radius)))
+    x2 = min(data.shape[1], int(math.ceil(x + sampling_radius)) + 1)
+    stamp = np.asarray(data[y1:y2, x1:x2], dtype=float)
+    yy, xx = np.indices(stamp.shape)
+    local_x = xx + x1
+    local_y = yy + y1
+    distance = np.hypot(local_x - x, local_y - y)
+    aperture_mask = distance <= radius
+    annulus_mask = (distance >= annulus_inner) & (distance <= annulus_outer)
+    finite_aperture = stamp[aperture_mask]
+    finite_aperture = finite_aperture[np.isfinite(finite_aperture)]
+    finite_annulus = stamp[annulus_mask]
+    finite_annulus = finite_annulus[np.isfinite(finite_annulus)]
+
+    box_y1 = max(0, y0 - 2)
+    box_y2 = min(data.shape[0], y0 + 3)
+    box_x1 = max(0, x0 - 2)
+    box_x2 = min(data.shape[1], x0 + 3)
+    local_box = np.asarray(data[box_y1:box_y2, box_x1:box_x2], dtype=float)
+    local_box_finite = local_box[np.isfinite(local_box)]
+
+    return {
+        "peak_adu": rounded_or_none(float(np.nanmax(finite_aperture)), 3) if finite_aperture.size else None,
+        "local_max_5x5_adu": rounded_or_none(float(np.nanmax(local_box_finite)), 3) if local_box_finite.size else None,
+        "aperture_area_px": int(finite_aperture.size),
+        "annulus_sum_adu": rounded_or_none(float(np.nansum(finite_annulus)), 3) if finite_annulus.size else None,
+        "annulus_median_adu": rounded_or_none(float(np.nanmedian(finite_annulus)), 3) if finite_annulus.size else None,
+        "annulus_area_px": int(finite_annulus.size),
+    }

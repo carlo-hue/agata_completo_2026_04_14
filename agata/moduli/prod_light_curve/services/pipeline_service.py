@@ -3,12 +3,13 @@ from __future__ import annotations
 import math
 
 import numpy as np
+import astropy.units as u
 
 from ..config import settings
 from .catalog_service import build_target_candidates
 from .dataset_service import build_dataset_summary
 from .frame_quality_service import build_frame_quality_summary, enrich_frame_quality_with_photometry
-from .photometry_service import normalize_photometry_params, run_differential_photometry
+from .photometry_service import measure_reference_aperture_metrics, normalize_photometry_params, run_differential_photometry
 from .reference_service import build_reference_payload
 from .selection_service import build_comparison_candidates, choose_auto_target, detect_reference_sources
 from .utils import utc_now_iso
@@ -67,65 +68,62 @@ def _estimate_point_metrics(
 ) -> dict | None:
     if not isinstance(point, dict) or point.get("x") is None or point.get("y") is None:
         return None
-
-    data = np.asarray(reference_frame["data"], dtype=float)
-    x = float(point["x"])
-    y = float(point["y"])
-    radius = max(1.0, float(aperture_radius))
-    annulus_inner = max(radius, float(annulus_inner_radius))
-    annulus_outer = max(annulus_inner, float(annulus_outer_radius))
-    sampling_radius = max(radius, annulus_outer, 2.0)
-    x0 = int(round(x))
-    y0 = int(round(y))
-    y1 = max(0, int(math.floor(y - sampling_radius)))
-    y2 = min(data.shape[0], int(math.ceil(y + sampling_radius)) + 1)
-    x1 = max(0, int(math.floor(x - sampling_radius)))
-    x2 = min(data.shape[1], int(math.ceil(x + sampling_radius)) + 1)
-    stamp = np.asarray(data[y1:y2, x1:x2], dtype=float)
-    if stamp.size == 0:
+    params = normalize_photometry_params({
+        "aperture_radius": aperture_radius,
+        "annulus_inner_radius": annulus_inner_radius,
+        "annulus_outer_radius": annulus_outer_radius,
+    }, {
+        "aperture_radius": settings.default_aperture_radius,
+        "annulus_inner_radius": settings.default_annulus_inner_radius,
+        "annulus_outer_radius": settings.default_annulus_outer_radius,
+    })
+    measured = measure_reference_aperture_metrics(reference_frame, points=[point], params=params)
+    if not measured:
         return None
-
-    yy, xx = np.indices(stamp.shape)
-    local_x = xx + x1
-    local_y = yy + y1
-    distance = np.hypot(local_x - x, local_y - y)
-    aperture_mask = distance <= radius
-    aperture_values = stamp[aperture_mask]
-    finite_aperture = aperture_values[np.isfinite(aperture_values)]
-    if finite_aperture.size == 0:
-        return None
-
-    box_y1 = max(0, y0 - 2)
-    box_y2 = min(data.shape[0], y0 + 3)
-    box_x1 = max(0, x0 - 2)
-    box_x2 = min(data.shape[1], x0 + 3)
-    local_box = np.asarray(data[box_y1:box_y2, box_x1:box_x2], dtype=float)
-    local_box_finite = local_box[np.isfinite(local_box)]
-
-    annulus_mask = (distance >= annulus_inner) & (distance <= annulus_outer)
-    annulus_values = stamp[annulus_mask]
-    finite_annulus = annulus_values[np.isfinite(annulus_values)]
+    metrics = measured[0]
 
     saturated_level = reference_frame["header"].get("SATURATE")
     try:
         saturated_level = float(saturated_level)
     except (TypeError, ValueError):
         saturated_level = None
-
-    peak_adu = float(np.nanmax(finite_aperture))
-    local_max_5x5_adu = float(np.nanmax(local_box_finite)) if local_box_finite.size else None
-    aperture_sum_adu = float(np.nansum(finite_aperture))
-    annulus_sum_adu = float(np.nansum(finite_annulus)) if finite_annulus.size else None
-    annulus_median_adu = float(np.nanmedian(finite_annulus)) if finite_annulus.size else None
+    ra_deg = None
+    dec_deg = None
+    ra_hms = None
+    dec_dms = None
+    wcs = reference_frame.get("wcs")
+    if wcs is not None:
+        try:
+            sky = wcs.pixel_to_world(float(metrics.get("refined_x", metrics["x"])), float(metrics.get("refined_y", metrics["y"])))
+            ra_deg = float(sky.ra.deg)
+            dec_deg = float(sky.dec.deg)
+            ra_hms = sky.ra.to_string(unit=u.hourangle, sep=":", precision=2, pad=True)
+            dec_dms = sky.dec.to_string(unit=u.deg, sep=":", precision=2, alwayssign=True, pad=True)
+        except Exception:
+            ra_deg = None
+            dec_deg = None
+            ra_hms = None
+            dec_dms = None
     return {
-        "x": point.get("x"),
-        "y": point.get("y"),
-        "peak_adu": round(peak_adu, 3),
-        "local_max_5x5_adu": round(local_max_5x5_adu, 3) if local_max_5x5_adu is not None else None,
-        "aperture_sum_adu": round(aperture_sum_adu, 3),
-        "annulus_sum_adu": round(annulus_sum_adu, 3) if annulus_sum_adu is not None else None,
-        "annulus_median_adu": round(annulus_median_adu, 3) if annulus_median_adu is not None else None,
-        "saturated": bool(peak_adu >= saturated_level) if saturated_level and math.isfinite(saturated_level) else None,
+        "x": metrics.get("x"),
+        "y": metrics.get("y"),
+        "refined_x": metrics.get("refined_x"),
+        "refined_y": metrics.get("refined_y"),
+        "centroid_shift_px": metrics.get("centroid_shift_px"),
+        "ra_deg": round(ra_deg, 6) if ra_deg is not None else None,
+        "dec_deg": round(dec_deg, 6) if dec_deg is not None else None,
+        "ra_hms": ra_hms,
+        "dec_dms": dec_dms,
+        "peak_adu": metrics.get("peak_adu"),
+        "local_max_5x5_adu": metrics.get("local_max_5x5_adu"),
+        "aperture_sum_adu": metrics.get("aperture_sum_adu"),
+        "aperture_net_adu": metrics.get("aperture_net_adu"),
+        "aperture_area_px": metrics.get("aperture_area_px"),
+        "annulus_sum_adu": metrics.get("annulus_sum_adu"),
+        "annulus_mean_adu": metrics.get("annulus_mean_adu"),
+        "annulus_median_adu": metrics.get("annulus_median_adu"),
+        "annulus_area_px": metrics.get("annulus_area_px"),
+        "saturated": bool(float(metrics["peak_adu"]) >= saturated_level) if metrics.get("peak_adu") is not None and saturated_level and math.isfinite(saturated_level) else None,
         "saturation_level_adu": round(float(saturated_level), 3) if saturated_level and math.isfinite(saturated_level) else None,
     }
 
