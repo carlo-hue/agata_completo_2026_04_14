@@ -7,7 +7,7 @@ import astropy.units as u
 
 from ..config import settings
 from .catalog_service import build_target_candidates
-from .dataset_service import build_dataset_summary
+from .dataset_service import build_dataset_summary, load_reference_frame
 from .frame_quality_service import build_frame_quality_summary, enrich_frame_quality_with_photometry
 from .photometry_service import measure_reference_aperture_metrics, normalize_photometry_params, run_differential_photometry
 from .reference_service import build_reference_payload
@@ -31,8 +31,13 @@ def _build_base_inspection_from_summary(dataset_summary: dict) -> dict:
     }
 
 
-def _build_base_inspection(dataset_path: str) -> dict:
-    dataset_summary = build_dataset_summary(dataset_path)
+def _build_base_inspection(dataset_path: str, *, include_wcs: bool = False, include_time_jd: bool = False, progress_callback=None) -> dict:
+    dataset_summary = build_dataset_summary(
+        dataset_path,
+        include_time_jd=include_time_jd,
+        include_wcs=include_wcs,
+        progress_callback=progress_callback,
+    )
     return _build_base_inspection_from_summary(dataset_summary)
 
 
@@ -77,7 +82,7 @@ def _estimate_point_metrics(
         "annulus_inner_radius": settings.default_annulus_inner_radius,
         "annulus_outer_radius": settings.default_annulus_outer_radius,
     })
-    measured = measure_reference_aperture_metrics(reference_frame, points=[point], params=params)
+    measured = measure_reference_aperture_metrics(reference_frame, points=[point], params=params, refine_points=False)
     if not measured:
         return None
     metrics = measured[0]
@@ -131,21 +136,26 @@ def _estimate_point_metrics(
 def estimate_selection_metrics(
     dataset_path: str,
     *,
+    reference_path: str | None = None,
     target: dict | None = None,
     comparison_stars: list[dict] | None = None,
     aperture_radius: float | None = None,
     annulus_inner_radius: float | None = None,
     annulus_outer_radius: float | None = None,
 ) -> dict:
-    inspection = _build_base_inspection(dataset_path)
     radius = aperture_radius if aperture_radius is not None else settings.default_aperture_radius
     annulus_inner = annulus_inner_radius if annulus_inner_radius is not None else settings.default_annulus_inner_radius
     annulus_outer = annulus_outer_radius if annulus_outer_radius is not None else settings.default_annulus_outer_radius
-    target_metrics = _estimate_point_metrics(inspection["reference_frame"], target, radius, annulus_inner, annulus_outer)
+    reference_frame = load_reference_frame(reference_path, include_wcs=True) if reference_path else _build_base_inspection(
+        dataset_path,
+        include_wcs=True,
+        include_time_jd=False,
+    )["reference_frame"]
+    target_metrics = _estimate_point_metrics(reference_frame, target, radius, annulus_inner, annulus_outer)
     comparison_metrics = [
         item
         for item in (
-            _estimate_point_metrics(inspection["reference_frame"], point, radius, annulus_inner, annulus_outer)
+            _estimate_point_metrics(reference_frame, point, radius, annulus_inner, annulus_outer)
             for point in (comparison_stars or [])
         )
         if item is not None
@@ -158,13 +168,23 @@ def estimate_selection_metrics(
     }
 
 
-def inspect_ground_dataset(dataset_path: str) -> dict:
-    inspection = _build_base_inspection(dataset_path)
+def inspect_ground_dataset(dataset_path: str, *, progress_callback=None) -> dict:
+    inspection = _build_base_inspection(
+        dataset_path,
+        include_wcs=False,
+        include_time_jd=False,
+        progress_callback=progress_callback,
+    )
     dataset_summary = inspection["dataset_summary"]
     reference_payload = inspection["reference_payload"]
     detected_sources = inspection["detected_sources"]
     auto_target = inspection["auto_target"]
     frame_quality = inspection["frame_quality"]
+
+    if callable(progress_callback):
+        progress_callback(stage="reference", message="Costruzione reference image...", current=1, total=3)
+        progress_callback(stage="detect_sources", message="Rilevamento sorgenti e metriche quality...", current=2, total=3)
+        progress_callback(stage="finalize", message="Preparazione payload frontend...", current=3, total=3)
 
     return {
         "status": "ok",
@@ -195,7 +215,7 @@ def inspect_ground_dataset(dataset_path: str) -> dict:
 
 
 def query_ground_target_candidates(dataset_path: str) -> dict:
-    inspection = _build_base_inspection(dataset_path)
+    inspection = _build_base_inspection(dataset_path, include_wcs=True, include_time_jd=False)
     target_candidates = build_target_candidates(inspection["reference_payload"], inspection["reference_frame"])
     auto_target = choose_auto_target(inspection["reference_payload"], inspection["detected_sources"], target_candidates)
     return {
@@ -211,7 +231,7 @@ def query_ground_target_candidates(dataset_path: str) -> dict:
 
 
 def suggest_ground_comparison_stars(dataset_path: str, target: dict | None = None) -> dict:
-    inspection = _build_base_inspection(dataset_path)
+    inspection = _build_base_inspection(dataset_path, include_wcs=False, include_time_jd=False)
     effective_target = target if isinstance(target, dict) else inspection["auto_target"]
     return {
         "status": "ok",
@@ -223,7 +243,7 @@ def suggest_ground_comparison_stars(dataset_path: str, target: dict | None = Non
 
 def run_ground_photometry(payload: dict) -> dict:
     dataset_path = str(payload.get("dataset_path", "")).strip()
-    dataset_summary = build_dataset_summary(dataset_path)
+    dataset_summary = build_dataset_summary(dataset_path, include_time_jd=True, include_wcs=False)
     inspection = _build_base_inspection_from_summary(dataset_summary)
     inspect_payload = {
         "status": "ok",

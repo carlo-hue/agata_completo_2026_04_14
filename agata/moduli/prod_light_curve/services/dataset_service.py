@@ -71,7 +71,7 @@ def _extract_mid_time_jd(header) -> float | None:
         return rounded_or_none(start.jd, 8)
 
 
-def load_fits_frame(file_path: str | Path) -> dict:
+def load_fits_frame(file_path: str | Path, *, include_time_jd: bool = False, include_wcs: bool = False) -> dict:
     with fits.open(file_path) as hdul:
         hdu = hdul[0]
         data = np.asarray(hdu.data, dtype=float)
@@ -80,9 +80,12 @@ def load_fits_frame(file_path: str | Path) -> dict:
         if data.ndim != 2:
             raise ValueError(f"FITS non 2D non supportato: {file_path}")
         header = hdu.header.copy()
-        try:
-            wcs = WCS(header) if header else None
-        except Exception:
+        if include_wcs:
+            try:
+                wcs = WCS(header) if header else None
+            except Exception:
+                wcs = None
+        else:
             wcs = None
 
     finite = data[np.isfinite(data)]
@@ -103,7 +106,7 @@ def load_fits_frame(file_path: str | Path) -> dict:
         "header": header,
         "wcs": wcs,
         "shape": [int(data.shape[0]), int(data.shape[1])],
-        "time_jd": _extract_mid_time_jd(header),
+        "time_jd": _extract_mid_time_jd(header) if include_time_jd else None,
         "metrics": {
             "median": rounded_or_none(median, 4),
             "scatter": rounded_or_none(scatter, 4),
@@ -115,9 +118,63 @@ def load_fits_frame(file_path: str | Path) -> dict:
     }
 
 
-def build_dataset_summary(dataset_path: str) -> dict:
+def load_reference_frame(file_path: str | Path, *, include_wcs: bool = False) -> dict:
+    path = Path(file_path).expanduser()
+    if not path.exists() or not path.is_file():
+        raise ValueError("reference_path non valido")
+    with fits.open(path) as hdul:
+        hdu = hdul[0]
+        data = np.asarray(hdu.data, dtype=float)
+        if data.ndim > 2:
+            data = np.squeeze(data)
+        if data.ndim != 2:
+            raise ValueError(f"FITS non 2D non supportato: {file_path}")
+        header = hdu.header.copy()
+        if include_wcs:
+            try:
+                wcs = WCS(header) if header else None
+            except Exception:
+                wcs = None
+        else:
+            wcs = None
+
+    return {
+        "path": str(path.resolve()),
+        "filename": path.name,
+        "data": data,
+        "header": header,
+        "wcs": wcs,
+        "shape": [int(data.shape[0]), int(data.shape[1])],
+        "time_jd": None,
+        "metrics": {},
+    }
+
+
+def build_dataset_summary(
+    dataset_path: str,
+    *,
+    include_time_jd: bool = False,
+    include_wcs: bool = False,
+    progress_callback=None,
+) -> dict:
     files = find_fits_files(dataset_path)
-    frames = [load_fits_frame(file_path) for file_path in files]
+    if callable(progress_callback):
+        progress_callback(
+            stage="scan",
+            message=f"Trovati {len(files)} FITS. Caricamento in corso...",
+            current=0,
+            total=len(files),
+        )
+    frames = []
+    for index, file_path in enumerate(files, start=1):
+        frames.append(load_fits_frame(file_path, include_time_jd=include_time_jd, include_wcs=include_wcs))
+        if callable(progress_callback):
+            progress_callback(
+                stage="load_frames",
+                message=f"Caricati {index} / {len(files)} FITS",
+                current=index,
+                total=len(files),
+            )
     first_shape = frames[0]["shape"]
     same_shape = all(frame["shape"] == first_shape for frame in frames)
     reference_index = select_reference_frame_index(frames)

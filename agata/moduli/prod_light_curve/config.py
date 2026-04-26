@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import tempfile
 
 MODULE_DIR = Path(__file__).resolve().parent
+RUNTIME_DIR = Path(tempfile.gettempdir()) / "agata_prod_light_curve_runtime"
 
 
 @dataclass(frozen=True)
@@ -19,7 +21,8 @@ class ProdLightCurveSettings:
     default_annulus_inner_radius: float = 10.0
     default_annulus_outer_radius: float = 16.0
     reference_selection_mode: str = "auto-best-frame"
-    session_storage_dir: str = str(MODULE_DIR / "_runtime_sessions")
+    session_storage_dir: str = str(RUNTIME_DIR / "sessions")
+    job_storage_dir: str = str(RUNTIME_DIR / "jobs")
 
 
 settings = ProdLightCurveSettings()

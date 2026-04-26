@@ -9,14 +9,18 @@ from .services import (
     browse_dataset_directories,
     delete_prod_session,
     estimate_selection_metrics,
+    get_job_result,
+    get_job_status,
     inspect_ground_dataset,
     list_prod_sessions,
     query_ground_target_candidates,
     restore_prod_session,
     run_ground_photometry,
     save_prod_session,
+    start_inspect_job,
     suggest_ground_comparison_stars,
 )
+from .services.job_service import JobNotFoundError
 
 LOGGER = logging.getLogger(__name__)
 
@@ -78,11 +82,33 @@ def create_blueprint() -> Blueprint:
         if not dataset_path:
             return _json_error("dataset_path mancante", 400)
         try:
-            result = inspect_ground_dataset(dataset_path)
+            result = start_inspect_job(dataset_path)
         except ValueError as err:
             return _json_error(str(err), 400)
         except Exception as err:
-            LOGGER.exception("Ground dataset inspect failed for %s", dataset_path)
+            LOGGER.exception("Ground dataset inspect start failed for %s", dataset_path)
+            return _json_error(str(err), 502)
+        return jsonify(result), 202
+
+    @bp.get("/api/inspect-status/<job_id>")
+    def inspect_status_api(job_id: str):
+        try:
+            result = get_job_status(job_id)
+        except JobNotFoundError as err:
+            return _json_error(str(err), 404)
+        except Exception as err:
+            LOGGER.exception("Ground dataset inspect status failed for %s", job_id)
+            return _json_error(str(err), 502)
+        return jsonify(result)
+
+    @bp.get("/api/inspect-result/<job_id>")
+    def inspect_result_api(job_id: str):
+        try:
+            result = get_job_result(job_id)
+        except ValueError as err:
+            return _json_error(str(err), 400)
+        except Exception as err:
+            LOGGER.exception("Ground dataset inspect result failed for %s", job_id)
             return _json_error(str(err), 502)
         return jsonify(result)
 
@@ -126,6 +152,7 @@ def create_blueprint() -> Blueprint:
         dataset_path = str(payload.get("dataset_path", "")).strip()
         if not dataset_path:
             return _json_error("dataset_path mancante", 400)
+        reference_path = str(payload.get("reference_path", "")).strip() or None
         target = payload.get("target") if isinstance(payload.get("target"), dict) else None
         comparison_stars = payload.get("comparison_stars") if isinstance(payload.get("comparison_stars"), list) else []
         aperture_radius = payload.get("aperture_radius")
@@ -134,6 +161,7 @@ def create_blueprint() -> Blueprint:
         try:
             result = estimate_selection_metrics(
                 dataset_path,
+                reference_path=reference_path,
                 target=target,
                 comparison_stars=comparison_stars,
                 aperture_radius=float(aperture_radius) if aperture_radius not in (None, "") else None,

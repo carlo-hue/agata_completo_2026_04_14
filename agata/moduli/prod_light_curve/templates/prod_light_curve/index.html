@@ -38,6 +38,8 @@
             id="prodLightCurveApp"
             class="page-shell"
             data-inspect-url="{{ url_for('prod_light_curve.inspect_api') }}"
+            data-inspect-status-url-template="{{ url_for('prod_light_curve.inspect_status_api', job_id='__JOB_ID__') }}"
+            data-inspect-result-url-template="{{ url_for('prod_light_curve.inspect_result_api', job_id='__JOB_ID__') }}"
             data-browse-url="{{ url_for('prod_light_curve.browse_datasets_api') }}"
             data-estimate-selection-url="{{ url_for('prod_light_curve.estimate_selection_api') }}"
             data-query-targets-url="{{ url_for('prod_light_curve.query_targets_api') }}"

@@ -34,6 +34,7 @@ def measure_reference_aperture_metrics(
     *,
     points: list[dict],
     params: dict,
+    refine_points: bool = True,
 ) -> list[dict]:
     data = np.asarray(reference_frame["data"], dtype=float)
     valid_items = []
@@ -47,7 +48,10 @@ def measure_reference_aperture_metrics(
     if not valid_items:
         return []
 
-    refined_points = [_refine_centroid(data, item["point"]) for item in valid_items]
+    refined_points = [
+        _refine_centroid(data, item["point"]) if refine_points else item["point"]
+        for item in valid_items
+    ]
     aperture = CircularAperture(refined_points, r=float(params["aperture_radius"]))
     annulus = CircularAnnulus(
         refined_points,

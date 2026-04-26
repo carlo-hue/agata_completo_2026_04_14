@@ -45,6 +45,8 @@
     const endpoints = {
         browseUrl: appRoot.dataset.browseUrl,
         inspectUrl: appRoot.dataset.inspectUrl,
+        inspectStatusUrlTemplate: appRoot.dataset.inspectStatusUrlTemplate,
+        inspectResultUrlTemplate: appRoot.dataset.inspectResultUrlTemplate,
         estimateSelectionUrl: appRoot.dataset.estimateSelectionUrl,
         queryTargetsUrl: appRoot.dataset.queryTargetsUrl,
         runUrl: appRoot.dataset.runUrl,
@@ -143,6 +145,28 @@
             message: "Risposta JSON non valida",
         }));
         return { response, data };
+    }
+
+    async function getJson(url) {
+        const response = await fetch(url, { method: "GET" });
+        const text = await response.text();
+        let data;
+        try {
+            data = text ? JSON.parse(text) : {
+                status: "error",
+                message: "Risposta vuota dal server",
+            };
+        } catch (_) {
+            data = {
+                status: "error",
+                message: `Risposta non JSON dal server (HTTP ${response.status})`,
+            };
+        }
+        return { response, data };
+    }
+
+    function resolveJobUrl(template, jobId) {
+        return String(template || "").replace("__JOB_ID__", encodeURIComponent(jobId));
     }
 
     function renderDatasetBrowser(payload) {
@@ -444,6 +468,9 @@
         try {
             const { response, data } = await postJson(endpoints.estimateSelectionUrl, {
                 dataset_path: datasetPath,
+                reference_path: inspectResult && inspectResult.reference && inspectResult.reference.source
+                    ? inspectResult.reference.source.path
+                    : null,
                 target: hasTarget ? selectedTarget : null,
                 comparison_stars: validComparisons,
                 aperture_radius: Number(apertureRadiusInput.value),
@@ -1095,15 +1122,54 @@
                 setError(data.message || `Errore HTTP ${response.status}`);
                 return;
             }
-            inspectResult = data;
+            const jobId = data.job_id;
+            if (!jobId) {
+                setStatus("Avvio job di ispezione fallito.", "status-error");
+                setError("job_id mancante nella risposta di inspect.");
+                return;
+            }
+            let inspectPayload = null;
+            while (!inspectPayload) {
+                await new Promise((resolve) => window.setTimeout(resolve, 700));
+                const { response: statusResponse, data: statusData } = await getJson(resolveJobUrl(endpoints.inspectStatusUrlTemplate, jobId));
+                if (!statusResponse.ok && statusResponse.status >= 500) {
+                    continue;
+                }
+                if (!statusResponse.ok || statusData.status === "error") {
+                    setStatus("Stato ispezione non disponibile.", "status-error");
+                    setError(statusData.message || `Errore HTTP ${statusResponse.status}`);
+                    return;
+                }
+                const progress = statusData.progress || {};
+                const detail = progress.total
+                    ? ` (${progress.current || 0} / ${progress.total})`
+                    : "";
+                setStatus(`${progress.message || "Ispezione in corso..."}${detail}`, "status-neutral");
+                if (statusData.job_status === "failed") {
+                    setStatus("Ispezione FITS fallita.", "status-error");
+                    setError(statusData.error || progress.message || "Job di ispezione fallito.");
+                    return;
+                }
+                if (statusData.job_status !== "completed") {
+                    continue;
+                }
+                const { response: resultResponse, data: resultData } = await getJson(resolveJobUrl(endpoints.inspectResultUrlTemplate, jobId));
+                if (!resultResponse.ok || resultData.status === "error") {
+                    setStatus("Recupero risultato ispezione fallito.", "status-error");
+                    setError(resultData.message || `Errore HTTP ${resultResponse.status}`);
+                    return;
+                }
+                inspectPayload = resultData;
+            }
+            inspectResult = inspectPayload;
             runResult = null;
-            renderReference(data);
-            renderTargeting(data);
+            renderReference(inspectPayload);
+            renderTargeting(inspectPayload);
             await refreshSelectionMetrics();
-            renderFrameQuality(data);
+            renderFrameQuality(inspectPayload);
             renderPhotometry({ photometry: null });
             await refreshSessions();
-            setStatus(data.message || "Dataset pronto.", "status-success");
+            setStatus(inspectPayload.message || "Dataset pronto.", "status-success");
             runButton.disabled = false;
             saveButton.disabled = true;
             queryTargetsButton.disabled = false;
