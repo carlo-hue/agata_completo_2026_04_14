@@ -333,7 +333,7 @@
         { key: "peak_adu", label: "Peak", numeric: true },
         { key: "aperture_sum_adu", label: "Apertura lorda", numeric: true },
         { key: "aperture_net_adu", label: "Apertura netta", numeric: true },
-        { key: "annulus_mean_adu", label: "Media annulus", numeric: true },
+        { key: "annulus_sky_per_px", label: "Sky/px (σ-clip)", numeric: true },
         { key: "annulus_median_adu", label: "Mediana annulus", numeric: true },
     ];
 
@@ -357,8 +357,8 @@
             aperture_net_adu: item.aperture_net_adu !== undefined && item.aperture_net_adu !== null && Number.isFinite(Number(item.aperture_net_adu))
                 ? Math.round(Number(item.aperture_net_adu))
                 : null,
-            annulus_mean_adu: item.annulus_mean_adu !== undefined && item.annulus_mean_adu !== null && Number.isFinite(Number(item.annulus_mean_adu))
-                ? Number(item.annulus_mean_adu).toFixed(1)
+            annulus_sky_per_px: item.annulus_sky_per_px !== undefined && item.annulus_sky_per_px !== null && Number.isFinite(Number(item.annulus_sky_per_px))
+                ? Number(item.annulus_sky_per_px).toFixed(1)
                 : null,
             annulus_median_adu: item.annulus_median_adu !== undefined && item.annulus_median_adu !== null && Number.isFinite(Number(item.annulus_median_adu))
                 ? Number(item.annulus_median_adu).toFixed(1)
@@ -999,34 +999,69 @@
             Plotly.purge(lightcurvePlot);
             return;
         }
-        const rawX = photometry.series.time_jd || [];
-        const rawY = photometry.series.differential_flux || [];
+        const summary = photometry.summary || {};
+        const series = photometry.series;
+
+        // Usa BJD_TDB se disponibile, altrimenti JD_UTC.
+        const hasBjd = summary.bjd_tdb_available && Array.isArray(series.bjd_tdb) && series.bjd_tdb.some(v => v !== null);
+        const rawX = hasBjd ? series.bjd_tdb : (series.time_jd || []);
+        const xLabel = hasBjd ? "BJD_TDB" : "JD";
+
+        const rawY = series.differential_flux || [];
+        const rawErr = (summary.errors_available && Array.isArray(series.sigma_differential_flux))
+            ? series.sigma_differential_flux
+            : null;
+
         const binSize = Math.max(1, Number.parseInt(binSizeInput.value || "1", 10) || 1);
         const plotMode = plotModeSelect.value || "lines+markers";
-        const binned = buildBinnedSeries(rawX, rawY, binSize);
-        photometryInfo.textContent = `frame usati=${photometry.summary.used_frames} | scatter=${photometry.summary.normalized_flux_scatter ?? "-"} | bin=${binSize}`;
-        Plotly.newPlot(lightcurvePlot, [{
+        const binned = buildBinnedSeries(rawX, rawY, binSize, rawErr);
+
+        const scatterStr = summary.normalized_flux_scatter != null
+            ? Number(summary.normalized_flux_scatter).toExponential(3)
+            : "-";
+        const bjdNote = hasBjd ? " | BJD_TDB ✓" : "";
+        const errNote = rawErr ? " | σ ✓" : "";
+        photometryInfo.textContent = `frame=${summary.used_frames} | scatter=${scatterStr} | bin=${binSize}${bjdNote}${errNote}`;
+
+        const trace = {
             x: binned.x,
             y: binned.y,
             mode: plotMode,
             type: "scatter",
             marker: { size: 6, color: "#b97411" },
             line: { color: "#365b76", width: 2 },
-            name: "Differential Flux",
-        }], {
+            name: "Flux differenziale",
+        };
+
+        // Barre d'errore: sia per dati singoli che binnati.
+        if (rawErr && binned.err) {
+            trace.error_y = {
+                type: "data",
+                array: binned.err.map(v => (v != null && Number.isFinite(Number(v)) ? Number(v) : null)),
+                visible: true,
+                color: "#b97411",
+                thickness: 1,
+                width: 3,
+            };
+        }
+
+        const traces = [trace];
+
+        Plotly.newPlot(lightcurvePlot, traces, {
             margin: { t: 20, r: 20, b: 40, l: 55 },
-            xaxis: { title: "JD" },
-            yaxis: { title: "Differential Flux" },
+            xaxis: { title: xLabel },
+            yaxis: { title: "Flux differenziale" },
             paper_bgcolor: "rgba(0,0,0,0)",
             plot_bgcolor: "rgba(0,0,0,0)",
         }, { responsive: true });
     }
 
-    function buildBinnedSeries(xValues, yValues, binSize) {
+    function buildBinnedSeries(xValues, yValues, binSize, errValues = null) {
         if (binSize <= 1) {
             return {
                 x: xValues.slice(),
                 y: yValues.slice(),
+                err: errValues ? errValues.slice() : null,
             };
         }
         const pairs = [];
@@ -1036,10 +1071,12 @@
             if (!Number.isFinite(x) || !Number.isFinite(y)) {
                 continue;
             }
-            pairs.push({ x, y });
+            const e = errValues ? Number(errValues[index]) : NaN;
+            pairs.push({ x, y, e: Number.isFinite(e) ? e : null });
         }
         const binnedX = [];
         const binnedY = [];
+        const binnedErr = [];
         for (let start = 0; start < pairs.length; start += binSize) {
             const chunk = pairs.slice(start, start + binSize);
             if (!chunk.length) {
@@ -1049,8 +1086,16 @@
             const meanY = chunk.reduce((sum, item) => sum + item.y, 0) / chunk.length;
             binnedX.push(meanX);
             binnedY.push(meanY);
+            // Errore sul bin: sigma/sqrt(N) (per punti con errori omogenei).
+            const errs = chunk.map(item => item.e).filter(v => v !== null && Number.isFinite(v));
+            if (errs.length > 0) {
+                const quadSum = errs.reduce((s, v) => s + v * v, 0);
+                binnedErr.push(Math.sqrt(quadSum) / errs.length);
+            } else {
+                binnedErr.push(null);
+            }
         }
-        return { x: binnedX, y: binnedY };
+        return { x: binnedX, y: binnedY, err: errValues ? binnedErr : null };
     }
 
     async function refreshSessions() {

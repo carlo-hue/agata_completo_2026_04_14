@@ -125,7 +125,7 @@ def _estimate_point_metrics(
         "aperture_net_adu": metrics.get("aperture_net_adu"),
         "aperture_area_px": metrics.get("aperture_area_px"),
         "annulus_sum_adu": metrics.get("annulus_sum_adu"),
-        "annulus_mean_adu": metrics.get("annulus_mean_adu"),
+        "annulus_sky_per_px": metrics.get("annulus_sky_per_px"),
         "annulus_median_adu": metrics.get("annulus_median_adu"),
         "annulus_area_px": metrics.get("annulus_area_px"),
         "saturated": bool(float(metrics["peak_adu"]) >= saturated_level) if metrics.get("peak_adu") is not None and saturated_level and math.isfinite(saturated_level) else None,
