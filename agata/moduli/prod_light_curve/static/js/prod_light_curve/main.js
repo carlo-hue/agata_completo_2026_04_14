@@ -40,6 +40,10 @@
     const plotModeSelect = document.getElementById("plotModeSelect");
     const binSizeInput = document.getElementById("binSizeInput");
     const lightcurvePlot = document.getElementById("lightcurvePlot");
+    const diagnosticPlotsPanel = document.getElementById("diagnosticPlotsPanel");
+    const fluxPlot = document.getElementById("fluxPlot");
+    const fwhmPlot = document.getElementById("fwhmPlot");
+    const airmassPlot = document.getElementById("airmassPlot");
     const statusBox = document.getElementById("statusBox");
     const errorBox = document.getElementById("errorBox");
     const apertureRadiusInput = document.getElementById("apertureRadiusInput");
@@ -1056,6 +1060,88 @@
         }, { responsive: true });
     }
 
+    function renderDiagnosticPlots(result) {
+        const photometry = result.photometry;
+        if (!photometry || !photometry.series) {
+            diagnosticPlotsPanel.style.display = "none";
+            Plotly.purge(fluxPlot);
+            Plotly.purge(fwhmPlot);
+            Plotly.purge(airmassPlot);
+            return;
+        }
+        const summary = photometry.summary || {};
+        const series = photometry.series;
+        const hasBjd = summary.bjd_tdb_available && Array.isArray(series.bjd_tdb) && series.bjd_tdb.some(v => v !== null);
+        const xRaw = hasBjd ? series.bjd_tdb : (series.time_jd || []);
+        const xLabel = hasBjd ? "BJD_TDB" : "JD";
+        const plotLayout = (yTitle) => ({
+            margin: { t: 10, r: 20, b: 36, l: 60 },
+            xaxis: { title: xLabel },
+            yaxis: { title: yTitle },
+            paper_bgcolor: "rgba(0,0,0,0)",
+            plot_bgcolor: "rgba(0,0,0,0)",
+        });
+        const plotConfig = { responsive: true };
+
+        // --- Plot 1: flusso netto target e comparison ensemble ---
+        const targetFlux = series.target_flux || [];
+        const compFlux = series.comparison_flux || [];
+        const hasFlux = targetFlux.some(v => v !== null && Number.isFinite(Number(v)));
+        if (hasFlux) {
+            Plotly.newPlot(fluxPlot, [
+                {
+                    x: xRaw, y: targetFlux,
+                    mode: "markers", type: "scatter",
+                    name: "Target (ADU netti)",
+                    marker: { size: 5, color: "#e07b39" },
+                },
+                {
+                    x: xRaw, y: compFlux,
+                    mode: "markers", type: "scatter",
+                    name: "Comparison ensemble (ADU netti)",
+                    marker: { size: 5, color: "#4a90d9" },
+                },
+            ], plotLayout("Flusso netto (ADU)"), plotConfig);
+            fluxPlot.style.display = "";
+        } else {
+            fluxPlot.style.display = "none";
+        }
+
+        // --- Plot 2: FWHM target per frame ---
+        const hasFwhm = summary.fwhm_available && Array.isArray(series.fwhm_px);
+        if (hasFwhm) {
+            Plotly.newPlot(fwhmPlot, [{
+                x: xRaw, y: series.fwhm_px,
+                mode: "markers+lines", type: "scatter",
+                name: "FWHM target (px)",
+                marker: { size: 5, color: "#7b5ea7" },
+                line: { color: "#7b5ea7", width: 1, dash: "dot" },
+            }], plotLayout("FWHM (px)"), plotConfig);
+            fwhmPlot.style.display = "";
+        } else {
+            fwhmPlot.style.display = "none";
+            Plotly.purge(fwhmPlot);
+        }
+
+        // --- Plot 3: airmass ---
+        const hasAirmass = summary.airmass_available && Array.isArray(series.airmass);
+        if (hasAirmass) {
+            Plotly.newPlot(airmassPlot, [{
+                x: xRaw, y: series.airmass,
+                mode: "lines+markers", type: "scatter",
+                name: "Airmass",
+                marker: { size: 5, color: "#3d8f5f" },
+                line: { color: "#3d8f5f", width: 1.5 },
+            }], plotLayout("Airmass"), plotConfig);
+            airmassPlot.style.display = "";
+        } else {
+            airmassPlot.style.display = "none";
+            Plotly.purge(airmassPlot);
+        }
+
+        diagnosticPlotsPanel.style.display = hasFlux || hasFwhm || hasAirmass ? "" : "none";
+    }
+
     function buildBinnedSeries(xValues, yValues, binSize, errValues = null) {
         if (binSize <= 1) {
             return {
@@ -1127,6 +1213,7 @@
             return;
         }
         renderPhotometry(runResult);
+        renderDiagnosticPlots(runResult);
     }
 
     function stagePointToPixel(event) {
@@ -1231,6 +1318,7 @@
             await refreshSelectionMetrics();
             renderFrameQuality(inspectPayload);
             renderPhotometry({ photometry: null });
+            renderDiagnosticPlots({ photometry: null });
             await refreshSessions();
             setStatus(inspectPayload.message || "Dataset pronto.", "status-success");
             runButton.disabled = false;
@@ -1272,6 +1360,7 @@
             renderTargeting(data);
             renderFrameQuality(data);
             renderPhotometry(data);
+            renderDiagnosticPlots(data);
             saveButton.disabled = false;
             setStatus(data.message || "Fotometria completata.", "status-success");
         } catch (error) {
@@ -1334,6 +1423,7 @@
             await refreshSelectionMetrics();
             renderFrameQuality(data);
             renderPhotometry(data);
+            renderDiagnosticPlots(data);
             saveButton.disabled = false;
             runButton.disabled = false;
             solveAstrometryButton.disabled = false;

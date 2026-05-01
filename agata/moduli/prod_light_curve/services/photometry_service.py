@@ -144,6 +144,8 @@ def run_differential_photometry(
     time_jd = []
     bjd_tdb_series = []
     centroid_shift = []
+    fwhm_px_series = []
+    airmass_series = []
     per_frame_rows = []
     refined_target_positions = []
 
@@ -189,6 +191,12 @@ def run_differential_photometry(
         sigma_dm = _sigma_differential_mag(current_target_flux, current_comparison_flux, sigma_tgt, sigma_ens)
         sigma_nf = _sigma_normalized_flux(current_target_flux, current_comparison_flux, sigma_tgt, sigma_ens)
 
+        # FWHM del target su questo frame (secondo momento gaussiano su stamp 20px).
+        fwhm_px = _compute_frame_fwhm(data, refined_target, radius=10)
+
+        # Airmass dall'header FITS (scritto da MaxIm, NINA, SGP, Sequence Generator).
+        airmass = _header_float_any(header, "AIRMASS")
+
         # Correzione baricentrica JD_UTC → BJD_TDB (richiede RA/Dec del target).
         jd_frame = frame.get("time_jd")
         bjd = _compute_bjd_tdb(jd_frame, target_ra_deg, target_dec_deg, header)
@@ -202,6 +210,8 @@ def run_differential_photometry(
         sigma_normalized_flux_series.append(sigma_nf)
         time_jd.append(jd_frame)
         bjd_tdb_series.append(bjd)
+        fwhm_px_series.append(fwhm_px)
+        airmass_series.append(rounded_or_none(airmass, 4))
         centroid_shift.append(float(math.hypot(
             refined_target[0] - target_point[0],
             refined_target[1] - target_point[1],
@@ -222,6 +232,8 @@ def run_differential_photometry(
             "differential_mag": rounded_or_none(current_mag, 6),
             "sigma_differential_mag": sigma_dm,
             "sigma_normalized_flux": sigma_nf,
+            "fwhm_px": fwhm_px,
+            "airmass": rounded_or_none(airmass, 4),
             "centroid_shift_px": rounded_or_none(centroid_shift[-1], 4),
         })
 
@@ -262,6 +274,8 @@ def run_differential_photometry(
 
     has_bjd = any(item["bjd_tdb"] is not None for item in ordered_rows)
     has_errors = any(item["sigma_differential_mag"] is not None for item in ordered_rows)
+    has_fwhm = any(item["fwhm_px"] is not None for item in ordered_rows)
+    has_airmass = any(item["airmass"] is not None for item in ordered_rows)
 
     return {
         "available": True,
@@ -293,6 +307,8 @@ def run_differential_photometry(
                 [item.get("sigma_differential_flux") for item in ordered_rows] if has_errors else None
             ),
             "centroid_shift_px": [rounded_or_none(item["centroid_shift_px"], 4) for item in ordered_rows],
+            "fwhm_px": [item["fwhm_px"] for item in ordered_rows] if has_fwhm else None,
+            "airmass": [item["airmass"] for item in ordered_rows] if has_airmass else None,
         },
         "per_frame": [
             {
@@ -306,6 +322,8 @@ def run_differential_photometry(
                 "ratio_flux": rounded_or_none(item["differential_flux"], 8),
                 "differential_mag": rounded_or_none(item["differential_mag"], 6),
                 "sigma_differential_mag": item.get("sigma_differential_mag"),
+                "fwhm_px": item.get("fwhm_px"),
+                "airmass": item.get("airmass"),
                 "centroid_shift_px": rounded_or_none(item["centroid_shift_px"], 4),
             }
             for item in ordered_rows
@@ -322,6 +340,8 @@ def run_differential_photometry(
             ),
             "bjd_tdb_available": has_bjd,
             "errors_available": has_errors,
+            "fwhm_available": has_fwhm,
+            "airmass_available": has_airmass,
             "normalized_flux_scatter": rounded_or_none(float(np.nanstd(normalized_flux_array)), 8),
             "centroid_shift_median_px": rounded_or_none(
                 float(np.nanmedian(np.asarray(centroid_shift, dtype=float))), 4
@@ -460,6 +480,40 @@ def _safe_float(value) -> float | None:
         return v if math.isfinite(v) else None
     except (TypeError, ValueError):
         return None
+
+
+# ---------------------------------------------------------------------------
+# Helpers: FWHM per frame
+# ---------------------------------------------------------------------------
+
+def _compute_frame_fwhm(data: np.ndarray, point: tuple[float, float], radius: int = 10) -> float | None:
+    """
+    Stima FWHM in pixel sul centroide raffinato via secondo momento gaussiano.
+    Formula: FWHM = 2.355 * sqrt(0.5 * (var_x + var_y))
+    Restituisce None se lo stamp è vuoto o la stima non è finita.
+    """
+    x0 = int(round(point[0]))
+    y0 = int(round(point[1]))
+    y1 = max(0, y0 - radius)
+    y2 = min(data.shape[0], y0 + radius + 1)
+    x1 = max(0, x0 - radius)
+    x2 = min(data.shape[1], x0 + radius + 1)
+    stamp = np.asarray(data[y1:y2, x1:x2], dtype=float)
+    if stamp.size < 9:
+        return None
+    stamp = stamp - float(np.nanmedian(stamp))
+    stamp[stamp < 0] = 0
+    stamp = np.nan_to_num(stamp, nan=0.0)
+    total = float(np.nansum(stamp))
+    if total <= 0:
+        return None
+    yy, xx = np.indices(stamp.shape)
+    xbar = np.nansum(xx * stamp) / total
+    ybar = np.nansum(yy * stamp) / total
+    varx = np.nansum((xx - xbar) ** 2 * stamp) / total
+    vary = np.nansum((yy - ybar) ** 2 * stamp) / total
+    fwhm = 2.355 * math.sqrt(max(0.0, 0.5 * (varx + vary)))
+    return rounded_or_none(fwhm, 2) if math.isfinite(fwhm) and fwhm > 0 else None
 
 
 # ---------------------------------------------------------------------------

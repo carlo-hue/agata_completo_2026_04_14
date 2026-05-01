@@ -526,6 +526,12 @@ button:disabled {
     min-height: 360px;
 }
 
+.plot-box--small {
+    width: 100%;
+    min-height: 200px;
+    margin-top: 0.75rem;
+}
+
 .output-box {
     white-space: pre-wrap;
     word-break: break-word;
