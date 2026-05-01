@@ -12,6 +12,22 @@ from .utils import render_preview_base64, rounded_or_none
 def build_reference_payload(dataset_summary: dict) -> dict:
     reference_index = int(dataset_summary["reference_frame_index"])
     reference_frame = dataset_summary["frames"][reference_index]
+    return build_reference_payload_from_frame(
+        reference_frame,
+        frame_index=reference_index,
+        mode=settings.reference_selection_mode,
+        message="Reference image costruita dal backend su un frame della sequenza.",
+    )
+
+
+def build_reference_payload_from_frame(
+    reference_frame: dict,
+    *,
+    frame_index: int = 0,
+    mode: str | None = None,
+    message: str | None = None,
+    solved: bool = False,
+) -> dict:
     data = reference_frame["data"]
     header = reference_frame["header"]
     wcs = reference_frame.get("wcs")
@@ -51,12 +67,15 @@ def build_reference_payload(dataset_summary: dict) -> dict:
 
     return {
         "available": True,
-        "mode": settings.reference_selection_mode,
-        "message": "Reference image costruita dal backend su un frame della sequenza.",
-        "frame_index": reference_index,
+        "mode": mode or settings.reference_selection_mode,
+        "message": message or "Reference image costruita dal backend su un frame della sequenza.",
+        "frame_index": int(frame_index),
         "source": {
             "path": reference_frame["path"],
             "filename": reference_frame["filename"],
+        },
+        "astrometry": {
+            "solved": bool(solved),
         },
         "shape": [int(height), int(width)],
         "center_pixel": center_pixel,

@@ -175,6 +175,28 @@ def run_differential_photometry(
         flux_scale = 1.0
     normalized_flux_array = normalized_flux_array / flux_scale
 
+    ordered_rows = []
+    for index, row in enumerate(per_frame_rows):
+        ordered_rows.append({
+            "frame_index": int(row["frame_index"]),
+            "filename": row.get("filename"),
+            "time_jd": time_jd[index],
+            "target_flux": target_flux[index],
+            "comparison_flux": comparison_flux[index],
+            "differential_flux": float(normalized_flux_array[index]),
+            "differential_mag": differential_mag[index],
+            "centroid_shift_px": centroid_shift[index],
+            "refined_target_position": refined_target_positions[index],
+        })
+
+    ordered_rows.sort(
+        key=lambda item: (
+            item["time_jd"] is None,
+            float(item["time_jd"]) if item["time_jd"] is not None else float("inf"),
+            item["frame_index"],
+        )
+    )
+
     return {
         "available": True,
         "message": "Fotometria differential aperture eseguita sul server.",
@@ -188,17 +210,29 @@ def run_differential_photometry(
                 {"x": rounded_or_none(point[0], 3), "y": rounded_or_none(point[1], 3)}
                 for point in comparison_points
             ],
-            "included_frame_indices": [int(item) for item in included_frame_indices],
+            "included_frame_indices": [int(item["frame_index"]) for item in ordered_rows],
         },
         "series": {
-            "time_jd": [rounded_or_none(item, 8) for item in time_jd],
-            "target_flux": [rounded_or_none(item, 6) for item in target_flux],
-            "comparison_flux": [rounded_or_none(item, 6) for item in comparison_flux],
-            "differential_flux": [rounded_or_none(item, 8) for item in normalized_flux_array.tolist()],
-            "differential_mag": [rounded_or_none(item, 6) for item in differential_mag],
-            "centroid_shift_px": [rounded_or_none(item, 4) for item in centroid_shift],
+            "time_jd": [rounded_or_none(item["time_jd"], 8) for item in ordered_rows],
+            "target_flux": [rounded_or_none(item["target_flux"], 6) for item in ordered_rows],
+            "comparison_flux": [rounded_or_none(item["comparison_flux"], 6) for item in ordered_rows],
+            "differential_flux": [rounded_or_none(item["differential_flux"], 8) for item in ordered_rows],
+            "differential_mag": [rounded_or_none(item["differential_mag"], 6) for item in ordered_rows],
+            "centroid_shift_px": [rounded_or_none(item["centroid_shift_px"], 4) for item in ordered_rows],
         },
-        "per_frame": per_frame_rows,
+        "per_frame": [
+            {
+                "frame_index": int(item["frame_index"]),
+                "filename": item.get("filename"),
+                "time_jd": rounded_or_none(item["time_jd"], 8),
+                "target_flux": rounded_or_none(item["target_flux"], 6),
+                "comparison_flux": rounded_or_none(item["comparison_flux"], 6),
+                "ratio_flux": rounded_or_none(item["differential_flux"], 8),
+                "differential_mag": rounded_or_none(item["differential_mag"], 6),
+                "centroid_shift_px": rounded_or_none(item["centroid_shift_px"], 4),
+            }
+            for item in ordered_rows
+        ],
         "summary": {
             "used_frames": len(included_frame_indices),
             "time_min_jd": rounded_or_none(min(item for item in time_jd if item is not None), 8) if any(item is not None for item in time_jd) else None,
@@ -207,7 +241,7 @@ def run_differential_photometry(
             "centroid_shift_median_px": rounded_or_none(float(np.nanmedian(np.asarray(centroid_shift, dtype=float))), 4),
         },
         "diagnostics": {
-            "refined_target_positions": refined_target_positions,
+            "refined_target_positions": [item["refined_target_position"] for item in ordered_rows],
         },
     }
 

@@ -17,6 +17,7 @@ from .services import (
     restore_prod_session,
     run_ground_photometry,
     save_prod_session,
+    solve_reference_astrometry,
     start_inspect_job,
     suggest_ground_comparison_stars,
 )
@@ -181,14 +182,37 @@ def create_blueprint() -> Blueprint:
         if not isinstance(payload, dict):
             return _json_error("payload JSON non valido", 400)
         dataset_path = str(payload.get("dataset_path", "")).strip()
+        reference_path = str(payload.get("reference_path", "")).strip() or None
+        search_radius_arcsec = payload.get("search_radius_arcsec")
         if not dataset_path:
             return _json_error("dataset_path mancante", 400)
         try:
-            result = query_ground_target_candidates(dataset_path)
+            result = query_ground_target_candidates(
+                dataset_path,
+                search_radius_arcsec=search_radius_arcsec,
+                reference_path=reference_path,
+            )
         except ValueError as err:
             return _json_error(str(err), 400)
         except Exception as err:
             LOGGER.exception("Ground target query failed for %s", dataset_path)
+            return _json_error(str(err), 502)
+        return jsonify(result)
+
+    @bp.post("/api/solve-astrometry")
+    def solve_astrometry_api():
+        payload = request.get_json(silent=True) or {}
+        if not isinstance(payload, dict):
+            return _json_error("payload JSON non valido", 400)
+        reference_path = str(payload.get("reference_path", "")).strip()
+        if not reference_path:
+            return _json_error("reference_path mancante", 400)
+        try:
+            result = solve_reference_astrometry(reference_path)
+        except ValueError as err:
+            return _json_error(str(err), 400)
+        except Exception as err:
+            LOGGER.exception("Ground astrometry solve failed for %s", reference_path)
             return _json_error(str(err), 502)
         return jsonify(result)
 

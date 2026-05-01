@@ -59,6 +59,10 @@ def normalize_preview_image(data: np.ndarray, low_percentile: float, high_percen
         vmax = vmin + 1.0
     clipped = np.clip(np.asarray(data, dtype=float), vmin, vmax)
     normalized = (clipped - vmin) / max(vmax - vmin, 1e-9)
+    # A gentle asinh stretch keeps faint stars visible while avoiding
+    # the harsh, noisy look of a purely linear 8-bit preview.
+    stretch_factor = 8.0
+    normalized = np.arcsinh(normalized * stretch_factor) / np.arcsinh(stretch_factor)
     return np.asarray(np.flipud(normalized) * 255.0, dtype=np.uint8)
 
 
@@ -79,4 +83,3 @@ def encode_grayscale_png(image_array: np.ndarray) -> bytes:
 def render_preview_base64(data: np.ndarray, low_percentile: float, high_percentile: float) -> str:
     preview_array = normalize_preview_image(data, low_percentile, high_percentile)
     return base64.b64encode(encode_grayscale_png(preview_array)).decode("ascii")
-

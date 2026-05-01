@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import tempfile
 
@@ -23,6 +24,8 @@ class ProdLightCurveSettings:
     reference_selection_mode: str = "auto-best-frame"
     session_storage_dir: str = str(RUNTIME_DIR / "sessions")
     job_storage_dir: str = str(RUNTIME_DIR / "jobs")
+    plate_solve_storage_dir: str = str(RUNTIME_DIR / "plate_solves")
+    astrometry_net_api_key: str = os.environ.get("AGATA_ASTROMETRY_NET_API_KEY", "gnmcqjhxuzhpmfjx")
 
 
 settings = ProdLightCurveSettings()

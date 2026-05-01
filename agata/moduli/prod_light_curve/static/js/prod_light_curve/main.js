@@ -13,7 +13,9 @@
     const inspectButton = document.getElementById("inspectButton");
     const runButton = document.getElementById("runButton");
     const saveButton = document.getElementById("saveButton");
+    const solveAstrometryButton = document.getElementById("solveAstrometryButton");
     const queryTargetsButton = document.getElementById("queryTargetsButton");
+    const targetSearchRadiusInput = document.getElementById("targetSearchRadiusInput");
     const suggestComparisonsButton = document.getElementById("suggestComparisonsButton");
     const selectTargetButton = document.getElementById("selectTargetButton");
     const addComparisonButton = document.getElementById("addComparisonButton");
@@ -35,6 +37,8 @@
     const frameQualityBox = document.getElementById("frameQualityBox");
     const sessionsBox = document.getElementById("sessionsBox");
     const photometryInfo = document.getElementById("photometryInfo");
+    const plotModeSelect = document.getElementById("plotModeSelect");
+    const binSizeInput = document.getElementById("binSizeInput");
     const lightcurvePlot = document.getElementById("lightcurvePlot");
     const statusBox = document.getElementById("statusBox");
     const errorBox = document.getElementById("errorBox");
@@ -48,6 +52,7 @@
         inspectStatusUrlTemplate: appRoot.dataset.inspectStatusUrlTemplate,
         inspectResultUrlTemplate: appRoot.dataset.inspectResultUrlTemplate,
         estimateSelectionUrl: appRoot.dataset.estimateSelectionUrl,
+        solveAstrometryUrl: appRoot.dataset.solveAstrometryUrl,
         queryTargetsUrl: appRoot.dataset.queryTargetsUrl,
         runUrl: appRoot.dataset.runUrl,
         saveUrl: appRoot.dataset.saveUrl,
@@ -319,129 +324,47 @@
         return bestDistance <= 15 ? best : null;
     }
 
-    function selectionModeLabel(mode) {
-        if (!mode) {
-            return null;
-        }
-        if (mode === "catalog-candidate" || mode === "catalogo") {
-            return "catalogo";
-        }
-        if (mode === "auto-detected") {
-            return "auto";
-        }
-        if (mode === "manuale") {
-            return "manuale";
-        }
-        return String(mode);
-    }
+    const selectionMetricHeaders = [
+        { key: "label", label: "Selezione" },
+        { key: "x", label: "x", numeric: true },
+        { key: "y", label: "y", numeric: true },
+        { key: "ra_deg", label: "RA", numeric: true },
+        { key: "dec_deg", label: "Dec", numeric: true },
+        { key: "peak_adu", label: "Peak", numeric: true },
+        { key: "aperture_sum_adu", label: "Apertura lorda", numeric: true },
+        { key: "aperture_net_adu", label: "Apertura netta", numeric: true },
+        { key: "annulus_mean_adu", label: "Media annulus", numeric: true },
+        { key: "annulus_median_adu", label: "Mediana annulus", numeric: true },
+    ];
 
-    function describeTarget(target, result) {
-        if (!target) {
-            return "Target non selezionato.";
-        }
-        const parts = [
-            `x=${Number(target.x).toFixed(2)}`,
-            `y=${Number(target.y).toFixed(2)}`,
-        ];
-        if (
-            target.refined_x !== undefined && target.refined_y !== undefined
-            && target.refined_x !== null && target.refined_y !== null
-        ) {
-            parts.push(`xref=${Number(target.refined_x).toFixed(2)}`);
-            parts.push(`yref=${Number(target.refined_y).toFixed(2)}`);
-        }
-        if (target.centroid_shift_px !== undefined && target.centroid_shift_px !== null && Number.isFinite(Number(target.centroid_shift_px))) {
-            parts.push(`shift=${Number(target.centroid_shift_px).toFixed(2)} px`);
-        }
-        if (target.label) {
-            parts.push(String(target.label));
-        }
-        if (target.ra_deg !== undefined && target.dec_deg !== undefined) {
-            parts.push(`RA=${Number(target.ra_deg).toFixed(6)}`);
-            parts.push(`Dec=${Number(target.dec_deg).toFixed(6)}`);
-        }
-        if (target.catalog_name) {
-            parts.push(`catalogo=${target.catalog_name}`);
-        } else if (target.catalog_type) {
-            parts.push(`tipo=${target.catalog_type}`);
-        }
-        const modeLabel = selectionModeLabel(target.mode);
-        if (modeLabel) {
-            parts.push(`selezione=${modeLabel}`);
-        }
-        if (target.raw_peak_adu !== undefined && target.raw_peak_adu !== null && Number.isFinite(Number(target.raw_peak_adu))) {
-            parts.push(`peak click=${Number(target.raw_peak_adu).toFixed(1)} ADU`);
-        }
-        if (target.peak_adu !== undefined && target.peak_adu !== null && Number.isFinite(Number(target.peak_adu))) {
-            parts.push(`peak ref=${Number(target.peak_adu).toFixed(1)} ADU`);
-        }
-        if (target.local_max_5x5_adu !== undefined && target.local_max_5x5_adu !== null && Number.isFinite(Number(target.local_max_5x5_adu))) {
-            parts.push(`max 5x5=${Number(target.local_max_5x5_adu).toFixed(1)} ADU`);
-        }
-        if (target.aperture_sum_adu !== undefined && target.aperture_sum_adu !== null && Number.isFinite(Number(target.aperture_sum_adu))) {
-            parts.push(`somma lorda aperture=${Number(target.aperture_sum_adu).toFixed(1)} ADU`);
-        }
-        if (target.aperture_net_adu !== undefined && target.aperture_net_adu !== null && Number.isFinite(Number(target.aperture_net_adu))) {
-            parts.push(`somma netta aperture=${Number(target.aperture_net_adu).toFixed(1)} ADU`);
-        }
-        if (target.annulus_mean_adu !== undefined && target.annulus_mean_adu !== null && Number.isFinite(Number(target.annulus_mean_adu))) {
-            parts.push(`media annulus=${Number(target.annulus_mean_adu).toFixed(1)} ADU/px`);
-        }
-        if (target.annulus_median_adu !== undefined && target.annulus_median_adu !== null && Number.isFinite(Number(target.annulus_median_adu))) {
-            parts.push(`mediana annulus=${Number(target.annulus_median_adu).toFixed(1)} ADU/px`);
-        }
-        if (typeof target.saturated === "boolean") {
-            parts.push(target.saturated ? "saturata" : "non saturata");
-        }
-        return parts.join(" | ");
-    }
-
-    function describeSelectedComparisons(items, result) {
-        if (!items.length) {
-            return "Nessuna comparison star selezionata.";
-        }
-        return items.map(function (item, index) {
-            const parts = [`#${index + 1} x=${Number(item.x).toFixed(2)} y=${Number(item.y).toFixed(2)}`];
-            if (
-                item.refined_x !== undefined && item.refined_y !== undefined
-                && item.refined_x !== null && item.refined_y !== null
-            ) {
-                parts.push(`xref=${Number(item.refined_x).toFixed(2)}`);
-                parts.push(`yref=${Number(item.refined_y).toFixed(2)}`);
-            }
-            if (item.centroid_shift_px !== undefined && item.centroid_shift_px !== null && Number.isFinite(Number(item.centroid_shift_px))) {
-                parts.push(`shift=${Number(item.centroid_shift_px).toFixed(2)} px`);
-            }
-            if (item.ra_deg !== undefined && item.dec_deg !== undefined && item.ra_deg !== null && item.dec_deg !== null) {
-                parts.push(`RA=${Number(item.ra_deg).toFixed(6)}`);
-                parts.push(`Dec=${Number(item.dec_deg).toFixed(6)}`);
-            }
-            if (item.raw_peak_adu !== undefined && item.raw_peak_adu !== null && Number.isFinite(Number(item.raw_peak_adu))) {
-                parts.push(`peak click=${Number(item.raw_peak_adu).toFixed(1)} ADU`);
-            }
-            if (item.peak_adu !== undefined && item.peak_adu !== null && Number.isFinite(Number(item.peak_adu))) {
-                parts.push(`peak ref=${Number(item.peak_adu).toFixed(1)} ADU`);
-            }
-            if (item.local_max_5x5_adu !== undefined && item.local_max_5x5_adu !== null && Number.isFinite(Number(item.local_max_5x5_adu))) {
-                parts.push(`max 5x5=${Number(item.local_max_5x5_adu).toFixed(1)} ADU`);
-            }
-            if (item.aperture_sum_adu !== undefined && item.aperture_sum_adu !== null && Number.isFinite(Number(item.aperture_sum_adu))) {
-                parts.push(`somma lorda aperture=${Number(item.aperture_sum_adu).toFixed(1)} ADU`);
-            }
-            if (item.aperture_net_adu !== undefined && item.aperture_net_adu !== null && Number.isFinite(Number(item.aperture_net_adu))) {
-                parts.push(`somma netta aperture=${Number(item.aperture_net_adu).toFixed(1)} ADU`);
-            }
-            if (item.annulus_mean_adu !== undefined && item.annulus_mean_adu !== null && Number.isFinite(Number(item.annulus_mean_adu))) {
-                parts.push(`media annulus=${Number(item.annulus_mean_adu).toFixed(1)} ADU/px`);
-            }
-            if (item.annulus_median_adu !== undefined && item.annulus_median_adu !== null && Number.isFinite(Number(item.annulus_median_adu))) {
-                parts.push(`mediana annulus=${Number(item.annulus_median_adu).toFixed(1)} ADU/px`);
-            }
-            if (typeof item.saturated === "boolean") {
-                parts.push(item.saturated ? "saturata" : "non saturata");
-            }
-            return parts.join(" | ");
-        }).join(" ; ");
+    function buildSelectionMetricsRow(item, label) {
+        return {
+            label: label || "-",
+            x: Number(item.x).toFixed(2),
+            y: Number(item.y).toFixed(2),
+            ra_deg: item.ra_deg !== undefined && item.ra_deg !== null && Number.isFinite(Number(item.ra_deg))
+                ? Number(item.ra_deg).toFixed(3)
+                : null,
+            dec_deg: item.dec_deg !== undefined && item.dec_deg !== null && Number.isFinite(Number(item.dec_deg))
+                ? Number(item.dec_deg).toFixed(3)
+                : null,
+            peak_adu: item.peak_adu !== undefined && item.peak_adu !== null && Number.isFinite(Number(item.peak_adu))
+                ? Math.round(Number(item.peak_adu))
+                : null,
+            aperture_sum_adu: item.aperture_sum_adu !== undefined && item.aperture_sum_adu !== null && Number.isFinite(Number(item.aperture_sum_adu))
+                ? Math.round(Number(item.aperture_sum_adu))
+                : null,
+            aperture_net_adu: item.aperture_net_adu !== undefined && item.aperture_net_adu !== null && Number.isFinite(Number(item.aperture_net_adu))
+                ? Math.round(Number(item.aperture_net_adu))
+                : null,
+            annulus_mean_adu: item.annulus_mean_adu !== undefined && item.annulus_mean_adu !== null && Number.isFinite(Number(item.annulus_mean_adu))
+                ? Number(item.annulus_mean_adu).toFixed(1)
+                : null,
+            annulus_median_adu: item.annulus_median_adu !== undefined && item.annulus_median_adu !== null && Number.isFinite(Number(item.annulus_median_adu))
+                ? Number(item.annulus_median_adu).toFixed(1)
+                : null,
+            _raw: item,
+        };
     }
 
     async function refreshSelectionMetrics() {
@@ -608,8 +531,8 @@
             const point = imagePixelToStagePoint(x, y);
             const radius = imageRadiusToStageRadius(radiusPx);
             const color = role === "comparison"
-                ? "rgba(107, 214, 151, 0.92)"
-                : "rgba(255, 208, 128, 0.96)";
+                ? "rgba(156, 97, 255, 0.98)"
+                : "rgba(235, 54, 54, 0.98)";
             const lineWidth = role === "comparison" ? 1.15 : 1.25;
             drawCircle(point.x, point.y, radius, color, lineWidth);
         }
@@ -628,14 +551,24 @@
                 addRing(Number(item.x), Number(item.y), ring.value, ring.klass, `comparison ${index + 1} ${ring.title}`, "comparison");
             });
             const point = imagePixelToStagePoint(item.x, item.y);
-            drawText(point.x, point.y, index + 1, "rgba(119, 230, 164, 0.98)");
+            drawText(point.x, point.y, index + 1, "rgba(156, 97, 255, 0.98)");
         });
     }
 
     function renderTargeting(result) {
         const targeting = result.targeting || {};
         selectedTarget = selectedTarget || targeting.auto_target || null;
-        targetInfo.textContent = describeTarget(selectedTarget, result);
+        targetInfo.innerHTML = "";
+        if (!selectedTarget) {
+            targetInfo.textContent = "Target non selezionato.";
+            targetInfo.className = "detail-text";
+        } else {
+            targetInfo.className = "table-box";
+            targetInfo.appendChild(buildCandidateTable({
+                headers: selectionMetricHeaders,
+                rows: [buildSelectionMetricsRow(selectedTarget, "target")],
+            }));
+        }
 
         const candidates = targeting.target_candidates || [];
         const targetCandidatesLoaded = !!targeting.target_candidates_loaded;
@@ -673,23 +606,13 @@
         if (!selectedComparisons.length && comparisonCandidatesLoaded) {
             selectedComparisons = ((result.comparison_stars || {}).auto_selected || []).slice();
         }
-        comparisonInfo.textContent = describeSelectedComparisons(selectedComparisons, result);
         comparisonCandidatesBox.innerHTML = "";
         if (!comparisonCandidates.length && selectedComparisons.length) {
             comparisonCandidatesBox.className = "table-box";
             comparisonCandidatesBox.appendChild(buildCandidateTable({
-                headers: [
-                    { key: "label", label: "Comparison" },
-                    { key: "x", label: "x", numeric: true },
-                    { key: "y", label: "y", numeric: true },
-                ],
+                headers: selectionMetricHeaders,
                 rows: selectedComparisons.map(function (item, index) {
-                    return {
-                        x: Number(item.x).toFixed(2),
-                        y: Number(item.y).toFixed(2),
-                        label: `manual ${index + 1}`,
-                        _raw: item,
-                    };
+                    return buildSelectionMetricsRow(item, `man ${index + 1}`);
                 }),
                 isSelected: function () {
                     return true;
@@ -735,11 +658,18 @@
             setError("Seleziona prima una sessione.");
             return;
         }
+        const searchRadiusArcsec = Math.max(1, Number(targetSearchRadiusInput.value || 50));
         setError("");
         setBusy(queryTargetsButton, true, "Ricerca...");
-        setStatus("Query target noti in corso...", "status-neutral");
+        setStatus(`Query target noti in corso entro ${searchRadiusArcsec.toFixed(0)} arcsec...`, "status-neutral");
         try {
-            const { response, data } = await postJson(endpoints.queryTargetsUrl, { dataset_path: datasetPath });
+            const { response, data } = await postJson(endpoints.queryTargetsUrl, {
+                dataset_path: datasetPath,
+                reference_path: inspectResult && inspectResult.reference && inspectResult.reference.source
+                    ? inspectResult.reference.source.path
+                    : null,
+                search_radius_arcsec: searchRadiusArcsec,
+            });
             updateDebugPayload(data);
             if (!response.ok || data.status === "error") {
                 setStatus("Query target fallita.", "status-error");
@@ -755,12 +685,59 @@
                 },
             };
             renderTargeting(inspectResult);
-            setStatus(data.message || "Candidati target aggiornati.", "status-success");
+            const effectiveRadius = data.targeting && data.targeting.search_radius_arcsec !== undefined && data.targeting.search_radius_arcsec !== null
+                ? Number(data.targeting.search_radius_arcsec)
+                : searchRadiusArcsec;
+            const centerSkyUsed = data.targeting && data.targeting.center_sky_used
+                ? data.targeting.center_sky_used
+                : null;
+            const centerSummary = centerSkyUsed
+                && Number.isFinite(Number(centerSkyUsed.ra_deg))
+                && Number.isFinite(Number(centerSkyUsed.dec_deg))
+                ? ` centro usato: RA=${Number(centerSkyUsed.ra_deg).toFixed(3)} Dec=${Number(centerSkyUsed.dec_deg).toFixed(3)}`
+                : "";
+            setStatus(
+                `${data.message || "Candidati target aggiornati."} [raggio usato: ${effectiveRadius.toFixed(0)} arcsec${centerSummary}]`,
+                "status-success",
+            );
         } catch (error) {
             setStatus("Errore di rete durante la query target.", "status-error");
             setError(error instanceof Error ? error.message : String(error));
         } finally {
             setBusy(queryTargetsButton, false, "Ricerca...");
+        }
+    }
+
+    async function handleSolveAstrometry() {
+        if (!inspectResult || !inspectResult.reference || !inspectResult.reference.source) {
+            return;
+        }
+        setError("");
+        setBusy(solveAstrometryButton, true, "Risolvo...");
+        setStatus("Plate solving della reference image in corso...", "status-neutral");
+        try {
+            const { response, data } = await postJson(endpoints.solveAstrometryUrl, {
+                reference_path: inspectResult.reference.source.path,
+            });
+            updateDebugPayload(data);
+            if (!response.ok || data.status === "error") {
+                setStatus("Plate solving fallito.", "status-error");
+                setError(data.message || `Errore HTTP ${response.status}`);
+                return;
+            }
+            inspectResult = {
+                ...inspectResult,
+                reference: data.reference || inspectResult.reference,
+                astrometry: data.astrometry || null,
+            };
+            renderReference(inspectResult);
+            await refreshSelectionMetrics();
+            setStatus(data.message || "Plate solving completato.", "status-success");
+        } catch (error) {
+            setStatus("Errore di rete durante il plate solving.", "status-error");
+            setError(error instanceof Error ? error.message : String(error));
+        } finally {
+            setBusy(solveAstrometryButton, false, "Risolvo...");
         }
     }
 
@@ -1022,13 +999,16 @@
             Plotly.purge(lightcurvePlot);
             return;
         }
-        photometryInfo.textContent = `frame usati=${photometry.summary.used_frames} | scatter=${photometry.summary.normalized_flux_scatter ?? "-"}`;
-        const x = photometry.series.time_jd || [];
-        const y = photometry.series.differential_flux || [];
+        const rawX = photometry.series.time_jd || [];
+        const rawY = photometry.series.differential_flux || [];
+        const binSize = Math.max(1, Number.parseInt(binSizeInput.value || "1", 10) || 1);
+        const plotMode = plotModeSelect.value || "lines+markers";
+        const binned = buildBinnedSeries(rawX, rawY, binSize);
+        photometryInfo.textContent = `frame usati=${photometry.summary.used_frames} | scatter=${photometry.summary.normalized_flux_scatter ?? "-"} | bin=${binSize}`;
         Plotly.newPlot(lightcurvePlot, [{
-            x,
-            y,
-            mode: "lines+markers",
+            x: binned.x,
+            y: binned.y,
+            mode: plotMode,
             type: "scatter",
             marker: { size: 6, color: "#b97411" },
             line: { color: "#365b76", width: 2 },
@@ -1040,6 +1020,37 @@
             paper_bgcolor: "rgba(0,0,0,0)",
             plot_bgcolor: "rgba(0,0,0,0)",
         }, { responsive: true });
+    }
+
+    function buildBinnedSeries(xValues, yValues, binSize) {
+        if (binSize <= 1) {
+            return {
+                x: xValues.slice(),
+                y: yValues.slice(),
+            };
+        }
+        const pairs = [];
+        for (let index = 0; index < Math.min(xValues.length, yValues.length); index += 1) {
+            const x = Number(xValues[index]);
+            const y = Number(yValues[index]);
+            if (!Number.isFinite(x) || !Number.isFinite(y)) {
+                continue;
+            }
+            pairs.push({ x, y });
+        }
+        const binnedX = [];
+        const binnedY = [];
+        for (let start = 0; start < pairs.length; start += binSize) {
+            const chunk = pairs.slice(start, start + binSize);
+            if (!chunk.length) {
+                continue;
+            }
+            const meanX = chunk.reduce((sum, item) => sum + item.x, 0) / chunk.length;
+            const meanY = chunk.reduce((sum, item) => sum + item.y, 0) / chunk.length;
+            binnedX.push(meanX);
+            binnedY.push(meanY);
+        }
+        return { x: binnedX, y: binnedY };
     }
 
     async function refreshSessions() {
@@ -1064,6 +1075,13 @@
                 annulus_outer_radius: Number(annulusOuterInput.value),
             },
         };
+    }
+
+    function rerenderPhotometryFromState() {
+        if (!runResult) {
+            return;
+        }
+        renderPhotometry(runResult);
     }
 
     function stagePointToPixel(event) {
@@ -1172,6 +1190,7 @@
             setStatus(inspectPayload.message || "Dataset pronto.", "status-success");
             runButton.disabled = false;
             saveButton.disabled = true;
+            solveAstrometryButton.disabled = false;
             queryTargetsButton.disabled = false;
             suggestComparisonsButton.disabled = false;
             selectTargetButton.disabled = false;
@@ -1272,6 +1291,7 @@
             renderPhotometry(data);
             saveButton.disabled = false;
             runButton.disabled = false;
+            solveAstrometryButton.disabled = false;
             queryTargetsButton.disabled = false;
             suggestComparisonsButton.disabled = false;
             selectTargetButton.disabled = false;
@@ -1419,6 +1439,7 @@
 
     browseDatasetsButton.addEventListener("click", toggleDatasetBrowser);
     inspectButton.addEventListener("click", handleInspect);
+    solveAstrometryButton.addEventListener("click", handleSolveAstrometry);
     queryTargetsButton.addEventListener("click", handleQueryTargets);
     runButton.addEventListener("click", handleRun);
     saveButton.addEventListener("click", handleSave);
@@ -1431,11 +1452,14 @@
     });
     annulusInnerInput.addEventListener("input", renderOverlay);
     annulusOuterInput.addEventListener("input", renderOverlay);
+    plotModeSelect.addEventListener("change", rerenderPhotometryFromState);
+    binSizeInput.addEventListener("input", rerenderPhotometryFromState);
 
     setStatus("In attesa di input.", "status-neutral");
     updateDatasetSelectionBanner();
     setZoomControlsEnabled(false);
     inspectButton.disabled = true;
+    solveAstrometryButton.disabled = true;
     queryTargetsButton.disabled = true;
     suggestComparisonsButton.disabled = true;
     toggleCenterButton.disabled = true;

@@ -42,6 +42,7 @@
             data-inspect-result-url-template="{{ url_for('prod_light_curve.inspect_result_api', job_id='__JOB_ID__') }}"
             data-browse-url="{{ url_for('prod_light_curve.browse_datasets_api') }}"
             data-estimate-selection-url="{{ url_for('prod_light_curve.estimate_selection_api') }}"
+            data-solve-astrometry-url="{{ url_for('prod_light_curve.solve_astrometry_api') }}"
             data-query-targets-url="{{ url_for('prod_light_curve.query_targets_api') }}"
             data-run-url="{{ url_for('prod_light_curve.run_api') }}"
             data-save-url="{{ url_for('prod_light_curve.save_api') }}"
@@ -62,13 +63,18 @@
                 </div>
                 <div id="datasetBrowserPanel" class="dataset-browser hidden">
                     <div class="dataset-browser-layout">
-                        <div>
+                        <div class="dataset-browser-list-wrap">
                             <div id="datasetBrowserList" class="frame-quality-box empty-state">Nessuna cartella caricata.</div>
                         </div>
-                        <div class="dataset-browser-detail">
+                        <div class="dataset-browser-detail dataset-observation-card">
                             <h3>Osservazione selezionata</h3>
-                            <div id="datasetSelectionSummary" class="detail-text">Nessuna cartella selezionata.</div>
-                            <div id="datasetSelectionDetails" class="detail-text">Seleziona una voce dalla lista per vedere i dettagli del dataset.</div>
+                            <div id="datasetSelectionSummary" class="detail-text dataset-selection-summary hidden">Nessuna cartella selezionata.</div>
+                            <div id="datasetSelectionDetails" class="detail-text dataset-selection-details">Seleziona una voce dalla lista per vedere i dettagli del dataset.</div>
+                        </div>
+                        <div class="dataset-browser-detail dataset-status-card">
+                            <h3>Stato</h3>
+                            <div id="statusBox" class="status-box status-neutral">In attesa di input.</div>
+                            <div id="errorBox" class="status-box status-error hidden"></div>
                         </div>
                     </div>
                 </div>
@@ -119,8 +125,13 @@
                         <div class="detail-card">
                             <h3>Target</h3>
                             <div id="targetInfo" class="detail-text">Target non selezionato.</div>
-                            <div class="detail-card-actions">
+                            <div class="detail-card-actions target-query-row">
+                                <button id="solveAstrometryButton" type="button" class="button-secondary" disabled>Risolvi astrometria</button>
                                 <button id="queryTargetsButton" type="button" class="button-secondary" disabled>Cerca target noti</button>
+                                <label class="field-block field-compact field-inline-compact">
+                                    <span>Raggio ricerca (sec)</span>
+                                    <input id="targetSearchRadiusInput" type="number" min="1" step="1" value="50">
+                                </label>
                             </div>
                             <div id="targetCandidatesBox" class="list-box empty-state">Nessun candidato catalogato.</div>
                         </div>
@@ -151,14 +162,22 @@
             <section class="panel">
                 <h2>Curva di luce</h2>
                 <div id="photometryInfo" class="detail-text">Fotometria non ancora eseguita.</div>
+                <div class="plot-controls">
+                    <label class="field-block field-compact">
+                        <span>Visualizzazione</span>
+                        <select id="plotModeSelect">
+                            <option value="lines+markers">linee + punti</option>
+                            <option value="markers">solo punti</option>
+                        </select>
+                    </label>
+                    <label class="field-block field-compact">
+                        <span>Bin punti</span>
+                        <input id="binSizeInput" type="number" min="1" step="1" value="1">
+                    </label>
+                </div>
                 <div id="lightcurvePlot" class="plot-box"></div>
             </section>
 
-            <section class="panel panel-status">
-                <h2>Stato</h2>
-                <div id="statusBox" class="status-box status-neutral">In attesa di input.</div>
-                <div id="errorBox" class="status-box status-error hidden"></div>
-            </section>
         </main>
     </div>
 

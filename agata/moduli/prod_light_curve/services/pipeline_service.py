@@ -6,11 +6,11 @@ import numpy as np
 import astropy.units as u
 
 from ..config import settings
-from .catalog_service import build_target_candidates
+from .catalog_service import build_target_candidates, validate_reference_wcs
 from .dataset_service import build_dataset_summary, load_reference_frame
 from .frame_quality_service import build_frame_quality_summary, enrich_frame_quality_with_photometry
 from .photometry_service import measure_reference_aperture_metrics, normalize_photometry_params, run_differential_photometry
-from .reference_service import build_reference_payload
+from .reference_service import build_reference_payload, build_reference_payload_from_frame
 from .selection_service import build_comparison_candidates, choose_auto_target, detect_reference_sources
 from .utils import utc_now_iso
 
@@ -214,18 +214,71 @@ def inspect_ground_dataset(dataset_path: str, *, progress_callback=None) -> dict
     }
 
 
-def query_ground_target_candidates(dataset_path: str) -> dict:
-    inspection = _build_base_inspection(dataset_path, include_wcs=True, include_time_jd=False)
-    target_candidates = build_target_candidates(inspection["reference_payload"], inspection["reference_frame"])
-    auto_target = choose_auto_target(inspection["reference_payload"], inspection["detected_sources"], target_candidates)
+def query_ground_target_candidates(dataset_path: str, *, search_radius_arcsec: float | None = None, reference_path: str | None = None) -> dict:
+    try:
+        effective_radius_arcsec = float(search_radius_arcsec) if search_radius_arcsec is not None else None
+    except (TypeError, ValueError):
+        effective_radius_arcsec = None
+    if reference_path:
+        reference_frame = load_reference_frame(reference_path, include_wcs=True)
+        wcs_check = validate_reference_wcs(reference_frame)
+        if not wcs_check["valid"]:
+            raise ValueError(
+                "WCS insufficiente per cercare target noti. "
+                + "Mancano o sono incoerenti: "
+                + ", ".join(wcs_check["missing"])
+            )
+        reference_payload = build_reference_payload_from_frame(
+            reference_frame,
+            frame_index=0,
+            mode="astrometry.net" if ".new" in reference_frame["filename"] else settings.reference_selection_mode,
+            message="Reference image usata per la ricerca di target noti.",
+            solved=".new" in reference_frame["filename"],
+        )
+        detected_sources = detect_reference_sources(reference_frame)
+        dataset_payload = {"dataset_path": dataset_path}
+    else:
+        inspection = _build_base_inspection(dataset_path, include_wcs=True, include_time_jd=False)
+        wcs_check = validate_reference_wcs(inspection["reference_frame"])
+        if not wcs_check["valid"]:
+            raise ValueError(
+                "WCS insufficiente per cercare target noti. "
+                + "Mancano o sono incoerenti: "
+                + ", ".join(wcs_check["missing"])
+            )
+        reference_frame = inspection["reference_frame"]
+        reference_payload = inspection["reference_payload"]
+        detected_sources = inspection["detected_sources"]
+        dataset_payload = _dataset_payload(inspection["dataset_summary"])
+    catalog_result = build_target_candidates(
+        reference_payload,
+        reference_frame,
+        search_radius_arcsec=effective_radius_arcsec,
+    )
+    target_candidates = catalog_result["candidates"]
+    provider_statuses = catalog_result["provider_statuses"]
+    auto_target = choose_auto_target(reference_payload, detected_sources, target_candidates)
+    provider_summary = " | ".join(
+        f"{item['provider_label']}: "
+        + (
+            f"{item['count']} candidati"
+            if item.get("status") == "ok"
+            else item.get("message", item.get("status", "stato sconosciuto"))
+        )
+        for item in provider_statuses
+    )
     return {
         "status": "ok",
-        "message": "Candidati target caricati.",
-        "dataset": _dataset_payload(inspection["dataset_summary"]),
+        "message": f"Candidati target caricati. {provider_summary}" if provider_summary else "Candidati target caricati.",
+        "dataset": dataset_payload,
         "targeting": {
             "auto_target": auto_target,
             "target_candidates": target_candidates,
             "target_candidates_loaded": True,
+            "target_candidate_sources": provider_statuses,
+            "search_radius_arcsec": effective_radius_arcsec,
+            "reference_path_used": reference_frame["path"],
+            "center_sky_used": reference_payload.get("center_sky"),
         },
     }
 
