@@ -42,6 +42,7 @@
     const lightcurvePlot = document.getElementById("lightcurvePlot");
     const diagnosticPlotsPanel = document.getElementById("diagnosticPlotsPanel");
     const fluxPlot = document.getElementById("fluxPlot");
+    const comparisonIndividualPlot = document.getElementById("comparisonIndividualPlot");
     const fwhmPlot = document.getElementById("fwhmPlot");
     const airmassPlot = document.getElementById("airmassPlot");
     const statusBox = document.getElementById("statusBox");
@@ -1065,6 +1066,7 @@
         if (!photometry || !photometry.series) {
             diagnosticPlotsPanel.style.display = "none";
             Plotly.purge(fluxPlot);
+            Plotly.purge(comparisonIndividualPlot);
             Plotly.purge(fwhmPlot);
             Plotly.purge(airmassPlot);
             return;
@@ -1107,7 +1109,39 @@
             fluxPlot.style.display = "none";
         }
 
-        // --- Plot 2: FWHM target per frame ---
+        // --- Plot 2: flusso normalizzato per singola comparison star ---
+        const compPerStar = series.comparison_normalized_per_star;
+        const hasCompIndividual = Array.isArray(compPerStar) && compPerStar.length > 1;
+        if (hasCompIndividual) {
+            // Palette discreta: abbastanza colori per 10+ stelle
+            const palette = [
+                "#4a90d9", "#e07b39", "#7b5ea7", "#3d8f5f", "#c0392b",
+                "#16a085", "#d35400", "#8e44ad", "#27ae60", "#2980b9",
+            ];
+            const compTraces = compPerStar.map((star, idx) => ({
+                x: xRaw,
+                y: star.flux_normalized || [],
+                mode: "markers",
+                type: "scatter",
+                name: star.label || `Comp ${idx + 1}`,
+                marker: { size: 4, color: palette[idx % palette.length] },
+                opacity: 0.85,
+            }));
+            Plotly.newPlot(comparisonIndividualPlot, compTraces, {
+                ...plotLayout("Flux norm. (mediana=1)"),
+                shapes: [{
+                    type: "line", xref: "paper", x0: 0, x1: 1,
+                    y0: 1, y1: 1,
+                    line: { color: "#888", width: 1, dash: "dot" },
+                }],
+            }, plotConfig);
+            comparisonIndividualPlot.style.display = "";
+        } else {
+            comparisonIndividualPlot.style.display = "none";
+            Plotly.purge(comparisonIndividualPlot);
+        }
+
+        // --- Plot 4: FWHM target per frame ---
         const hasFwhm = summary.fwhm_available && Array.isArray(series.fwhm_px);
         if (hasFwhm) {
             Plotly.newPlot(fwhmPlot, [{
@@ -1123,7 +1157,7 @@
             Plotly.purge(fwhmPlot);
         }
 
-        // --- Plot 3: airmass ---
+        // --- Plot 5: airmass ---
         const hasAirmass = summary.airmass_available && Array.isArray(series.airmass);
         if (hasAirmass) {
             Plotly.newPlot(airmassPlot, [{
@@ -1139,7 +1173,7 @@
             Plotly.purge(airmassPlot);
         }
 
-        diagnosticPlotsPanel.style.display = hasFlux || hasFwhm || hasAirmass ? "" : "none";
+        diagnosticPlotsPanel.style.display = hasFlux || hasCompIndividual || hasFwhm || hasAirmass ? "" : "none";
     }
 
     function buildBinnedSeries(xValues, yValues, binSize, errValues = null) {

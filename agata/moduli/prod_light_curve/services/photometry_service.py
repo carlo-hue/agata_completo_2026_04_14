@@ -277,6 +277,17 @@ def run_differential_photometry(
     has_fwhm = any(item["fwhm_px"] is not None for item in ordered_rows)
     has_airmass = any(item["airmass"] is not None for item in ordered_rows)
 
+    # Trasponi comparison_individual_flux da [frame][star] a [star][frame].
+    n_comp = len(comparison_points)
+    comparison_series_per_star = []
+    for star_idx in range(n_comp):
+        star_series = []
+        for row in ordered_rows:
+            individual = row.get("comparison_individual_flux") or []
+            val = individual[star_idx] if star_idx < len(individual) else None
+            star_series.append(rounded_or_none(val, 6))
+        comparison_series_per_star.append(star_series)
+
     return {
         "available": True,
         "message": "Fotometria differential aperture eseguita sul server.",
@@ -309,6 +320,8 @@ def run_differential_photometry(
             "centroid_shift_px": [rounded_or_none(item["centroid_shift_px"], 4) for item in ordered_rows],
             "fwhm_px": [item["fwhm_px"] for item in ordered_rows] if has_fwhm else None,
             "airmass": [item["airmass"] for item in ordered_rows] if has_airmass else None,
+            # Una lista per ogni comparison star, normalizzata al proprio mediano (~1.0).
+            "comparison_normalized_per_star": _normalize_comparison_series(comparison_series_per_star),
         },
         "per_frame": [
             {
@@ -480,6 +493,38 @@ def _safe_float(value) -> float | None:
         return v if math.isfinite(v) else None
     except (TypeError, ValueError):
         return None
+
+
+# ---------------------------------------------------------------------------
+# Helpers: comparison stars per-star normalization
+# ---------------------------------------------------------------------------
+
+def _normalize_comparison_series(series_per_star: list[list]) -> list[dict]:
+    """
+    Per ogni comparison star restituisce il flusso normalizzato al proprio mediano.
+    Tutte le tracce sono attorno a 1.0: facile vedere quale stella è variabile.
+    """
+    result = []
+    for star_idx, raw_series in enumerate(series_per_star):
+        finite_vals = [v for v in raw_series if v is not None and math.isfinite(float(v))]
+        if not finite_vals:
+            result.append({"star_index": star_idx, "flux": raw_series})
+            continue
+        median_val = float(np.median(finite_vals))
+        if median_val == 0 or not math.isfinite(median_val):
+            median_val = 1.0
+        normalized = [
+            rounded_or_none(float(v) / median_val, 6) if v is not None and math.isfinite(float(v)) else None
+            for v in raw_series
+        ]
+        result.append({
+            "star_index": star_idx,
+            "label": f"Comp {star_idx + 1}",
+            "flux_raw": raw_series,
+            "flux_normalized": normalized,
+            "median_adu": rounded_or_none(median_val, 3),
+        })
+    return result
 
 
 # ---------------------------------------------------------------------------
