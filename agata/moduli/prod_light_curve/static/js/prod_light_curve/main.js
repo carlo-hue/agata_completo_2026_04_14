@@ -1085,49 +1085,65 @@
         });
         const plotConfig = { responsive: true };
 
-        // --- Plot 1: flusso netto target e comparison ensemble ---
+        // --- Plot 1: flusso netto grezzo — solo comparison ensemble ADU ---
         const targetFlux = series.target_flux || [];
         const compFlux = series.comparison_flux || [];
-        const hasFlux = targetFlux.some(v => v !== null && Number.isFinite(Number(v)));
+        const hasFlux = compFlux.some(v => v !== null && Number.isFinite(Number(v)));
         if (hasFlux) {
-            Plotly.newPlot(fluxPlot, [
-                {
-                    x: xRaw, y: targetFlux,
-                    mode: "markers", type: "scatter",
-                    name: "Target (ADU netti)",
-                    marker: { size: 5, color: "#e07b39" },
-                },
-                {
-                    x: xRaw, y: compFlux,
-                    mode: "markers", type: "scatter",
-                    name: "Comparison ensemble (ADU netti)",
-                    marker: { size: 5, color: "#4a90d9" },
-                },
-            ], plotLayout("Flusso netto (ADU)"), plotConfig);
+            Plotly.newPlot(fluxPlot, [{
+                x: xRaw, y: compFlux,
+                mode: "markers", type: "scatter",
+                name: "Comparison ensemble (ADU netti)",
+                marker: { size: 5, color: "#4a90d9" },
+            }], plotLayout("Ensemble ADU"), plotConfig);
             fluxPlot.style.display = "";
         } else {
             fluxPlot.style.display = "none";
         }
 
-        // --- Plot 2: flusso normalizzato per singola comparison star ---
+        // --- Plot 2: flusso normalizzato — target + ogni comparison star ---
         const compPerStar = series.comparison_normalized_per_star;
-        const hasCompIndividual = Array.isArray(compPerStar) && compPerStar.length > 1;
+        const hasCompIndividual = Array.isArray(compPerStar) && compPerStar.length >= 1;
+
+        // Normalizzazione client-side del target al proprio mediano.
+        function normalizeToMedian(values) {
+            const finite = values.filter(v => v !== null && Number.isFinite(Number(v))).map(Number);
+            if (!finite.length) return values;
+            const sorted = finite.slice().sort((a, b) => a - b);
+            const mid = Math.floor(sorted.length / 2);
+            const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+            return median === 0 ? values : values.map(v =>
+                v !== null && Number.isFinite(Number(v)) ? Number(v) / median : null
+            );
+        }
+
         if (hasCompIndividual) {
-            // Palette discreta: abbastanza colori per 10+ stelle
             const palette = [
-                "#4a90d9", "#e07b39", "#7b5ea7", "#3d8f5f", "#c0392b",
-                "#16a085", "#d35400", "#8e44ad", "#27ae60", "#2980b9",
+                "#4a90d9", "#7b5ea7", "#3d8f5f", "#c0392b",
+                "#16a085", "#d35400", "#8e44ad", "#27ae60", "#2980b9", "#c0392b",
             ];
-            const compTraces = compPerStar.map((star, idx) => ({
-                x: xRaw,
-                y: star.flux_normalized || [],
-                mode: "markers",
-                type: "scatter",
-                name: star.label || `Comp ${idx + 1}`,
-                marker: { size: 4, color: palette[idx % palette.length] },
-                opacity: 0.85,
-            }));
-            Plotly.newPlot(comparisonIndividualPlot, compTraces, {
+            const targetNorm = normalizeToMedian(targetFlux);
+            const traces = [
+                // Target: marcato per primo, colore arancio, marker più grandi
+                {
+                    x: xRaw, y: targetNorm,
+                    mode: "markers", type: "scatter",
+                    name: "Target",
+                    marker: { size: 7, color: "#e07b39", symbol: "diamond" },
+                    opacity: 1.0,
+                },
+                // Una traccia per ogni comparison star
+                ...compPerStar.map((star, idx) => ({
+                    x: xRaw,
+                    y: star.flux_normalized || [],
+                    mode: "markers",
+                    type: "scatter",
+                    name: star.label || `Comp ${idx + 1}`,
+                    marker: { size: 4, color: palette[idx % palette.length] },
+                    opacity: 0.8,
+                })),
+            ];
+            Plotly.newPlot(comparisonIndividualPlot, traces, {
                 ...plotLayout("Flux norm. (mediana=1)"),
                 shapes: [{
                     type: "line", xref: "paper", x0: 0, x1: 1,
