@@ -40,11 +40,13 @@
     const plotModeSelect = document.getElementById("plotModeSelect");
     const binSizeInput = document.getElementById("binSizeInput");
     const lightcurvePlot = document.getElementById("lightcurvePlot");
+    const showErrorsToggle = document.getElementById("showErrorsToggle");
     const diagnosticPlotsPanel = document.getElementById("diagnosticPlotsPanel");
     const fluxPlot = document.getElementById("fluxPlot");
     const comparisonIndividualPlot = document.getElementById("comparisonIndividualPlot");
     const fwhmPlot = document.getElementById("fwhmPlot");
     const airmassPlot = document.getElementById("airmassPlot");
+    const referenceCoordReadout = document.getElementById("referenceCoordReadout");
     const statusBox = document.getElementById("statusBox");
     const errorBox = document.getElementById("errorBox");
     const apertureRadiusInput = document.getElementById("apertureRadiusInput");
@@ -1007,13 +1009,30 @@
         const summary = photometry.summary || {};
         const series = photometry.series;
 
-        // Usa BJD_TDB se disponibile, altrimenti JD_UTC.
+        // Usa BJD_TDB se disponibile, altrimenti JD_UTC. Sottrae offset intero per leggibilità asse.
         const hasBjd = summary.bjd_tdb_available && Array.isArray(series.bjd_tdb) && series.bjd_tdb.some(v => v !== null);
-        const rawX = hasBjd ? series.bjd_tdb : (series.time_jd || []);
-        const xLabel = hasBjd ? "BJD_TDB" : "JD";
+        const rawXSrc = hasBjd ? series.bjd_tdb : (series.time_jd || []);
+        const JD_UNIX_EPOCH = 2440587.5;
+        let rawX, xLabel;
+        if (hasBjd) {
+            const finiteJd = rawXSrc.filter(v => v !== null && Number.isFinite(Number(v))).map(Number);
+            const bjdIntOffset = finiteJd.length ? Math.floor(Math.min(...finiteJd)) : 0;
+            rawX = rawXSrc.map(v => v !== null && Number.isFinite(Number(v)) ? Number(v) - bjdIntOffset : null);
+            let bjdDateStr = null;
+            if (finiteJd.length) {
+                const dateStart = new Date((Math.min(...finiteJd) - JD_UNIX_EPOCH) * 86400000).toISOString().slice(0, 10);
+                const dateEnd = new Date((Math.max(...finiteJd) - JD_UNIX_EPOCH) * 86400000).toISOString().slice(0, 10);
+                bjdDateStr = dateStart === dateEnd ? dateStart : `${dateStart} / ${dateEnd}`;
+            }
+            xLabel = `BJD_TDB − ${bjdIntOffset}${bjdDateStr ? ` (${bjdDateStr})` : ""}`;
+        } else {
+            rawX = rawXSrc;
+            xLabel = "JD";
+        }
 
         const rawY = series.differential_flux || [];
-        const rawErr = (summary.errors_available && Array.isArray(series.sigma_differential_flux))
+        const showErrors = showErrorsToggle ? showErrorsToggle.checked : true;
+        const rawErr = (showErrors && summary.errors_available && Array.isArray(series.sigma_differential_flux))
             ? series.sigma_differential_flux
             : null;
 
@@ -1025,7 +1044,7 @@
             ? Number(summary.normalized_flux_scatter).toExponential(3)
             : "-";
         const bjdNote = hasBjd ? " | BJD_TDB ✓" : "";
-        const errNote = rawErr ? " | σ ✓" : "";
+        const errNote = summary.errors_available ? (showErrors ? " | σ ✓" : " | σ off") : "";
         photometryInfo.textContent = `frame=${summary.used_frames} | scatter=${scatterStr} | bin=${binSize}${bjdNote}${errNote}`;
 
         const trace = {
@@ -1074,8 +1093,24 @@
         const summary = photometry.summary || {};
         const series = photometry.series;
         const hasBjd = summary.bjd_tdb_available && Array.isArray(series.bjd_tdb) && series.bjd_tdb.some(v => v !== null);
-        const xRaw = hasBjd ? series.bjd_tdb : (series.time_jd || []);
-        const xLabel = hasBjd ? "BJD_TDB" : "JD";
+        const xRawSrc = hasBjd ? series.bjd_tdb : (series.time_jd || []);
+        const JD_UNIX_EPOCH = 2440587.5;
+        let xRaw, xLabel;
+        if (hasBjd) {
+            const finiteJd = xRawSrc.filter(v => v !== null && Number.isFinite(Number(v))).map(Number);
+            const bjdIntOffset = finiteJd.length ? Math.floor(Math.min(...finiteJd)) : 0;
+            xRaw = xRawSrc.map(v => v !== null && Number.isFinite(Number(v)) ? Number(v) - bjdIntOffset : null);
+            let bjdDateStr = null;
+            if (finiteJd.length) {
+                const dateStart = new Date((Math.min(...finiteJd) - JD_UNIX_EPOCH) * 86400000).toISOString().slice(0, 10);
+                const dateEnd = new Date((Math.max(...finiteJd) - JD_UNIX_EPOCH) * 86400000).toISOString().slice(0, 10);
+                bjdDateStr = dateStart === dateEnd ? dateStart : `${dateStart} / ${dateEnd}`;
+            }
+            xLabel = `BJD_TDB − ${bjdIntOffset}${bjdDateStr ? ` (${bjdDateStr})` : ""}`;
+        } else {
+            xRaw = xRawSrc;
+            xLabel = "JD";
+        }
         const plotLayout = (yTitle) => ({
             margin: { t: 10, r: 20, b: 36, l: 60 },
             xaxis: { title: xLabel },
@@ -1291,6 +1326,40 @@
             return null;
         }
         return { x: pixelX, y: pixelY };
+    }
+
+    function pixelToSky(pixelX, pixelY) {
+        const ref = inspectResult && inspectResult.reference;
+        const centerSky = ref && ref.center_sky;
+        const centerPixel = ref && ref.center_pixel;
+        const circles = ref && ref.center_circles_arcmin;
+        if (!centerSky || !centerPixel || !circles || !circles.length) return null;
+        const arcsecPerPx = Number(circles[0].arcsec_per_pixel);
+        if (!arcsecPerPx || !Number.isFinite(arcsecPerPx)) return null;
+        const dx = pixelX - centerPixel.x;
+        const dy = pixelY - centerPixel.y;
+        const decRad = centerSky.dec_deg * Math.PI / 180;
+        const ra = centerSky.ra_deg - (dx * arcsecPerPx / 3600) / Math.cos(decRad);
+        const dec = centerSky.dec_deg + (dy * arcsecPerPx / 3600);
+        return { ra: ((ra % 360) + 360) % 360, dec };
+    }
+
+    function formatRa(raDeg) {
+        const h = Math.floor(raDeg / 15);
+        const mFrac = (raDeg / 15 - h) * 60;
+        const m = Math.floor(mFrac);
+        const s = (mFrac - m) * 60;
+        return `${String(h).padStart(2, "0")}h${String(m).padStart(2, "0")}m${s.toFixed(1).padStart(4, "0")}s`;
+    }
+
+    function formatDec(decDeg) {
+        const sign = decDeg >= 0 ? "+" : "−";
+        const abs = Math.abs(decDeg);
+        const d = Math.floor(abs);
+        const mFrac = (abs - d) * 60;
+        const m = Math.floor(mFrac);
+        const s = Math.round((mFrac - m) * 60);
+        return `${sign}${String(d).padStart(2, "0")}°${String(m).padStart(2, "0")}′${String(s).padStart(2, "0")}″`;
     }
 
     async function handleInspect() {
@@ -1592,6 +1661,29 @@
         }
     });
 
+    referenceStage.addEventListener("mousemove", function (event) {
+        if (!inspectResult) {
+            referenceCoordReadout.classList.add("hidden");
+            return;
+        }
+        const pixel = stagePointToPixel(event);
+        if (!pixel) {
+            referenceCoordReadout.classList.add("hidden");
+            return;
+        }
+        const sky = pixelToSky(pixel.x, pixel.y);
+        let text = `x=${pixel.x.toFixed(1)}  y=${pixel.y.toFixed(1)}`;
+        if (sky) {
+            text += `   ${formatRa(sky.ra)}  ${formatDec(sky.dec)}`;
+        }
+        referenceCoordReadout.textContent = text;
+        referenceCoordReadout.classList.remove("hidden");
+    });
+
+    referenceStage.addEventListener("mouseleave", function () {
+        referenceCoordReadout.classList.add("hidden");
+    });
+
     selectTargetButton.addEventListener("click", function () {
         editMode = "target";
         selectTargetButton.classList.add("is-active");
@@ -1639,6 +1731,9 @@
     annulusOuterInput.addEventListener("input", renderOverlay);
     plotModeSelect.addEventListener("change", rerenderPhotometryFromState);
     binSizeInput.addEventListener("input", rerenderPhotometryFromState);
+    if (showErrorsToggle) {
+        showErrorsToggle.addEventListener("change", rerenderPhotometryFromState);
+    }
 
     setStatus("In attesa di input.", "status-neutral");
     updateDatasetSelectionBanner();

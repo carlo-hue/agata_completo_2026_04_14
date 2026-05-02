@@ -362,6 +362,7 @@ def run_ground_photometry(payload: dict) -> dict:
         photometry_result["series"]["target_flux"],
         photometry_result["series"]["comparison_flux"],
         photometry_result["series"]["centroid_shift_px"],
+        fwhm_px=photometry_result["series"].get("fwhm_px"),
     )
 
     return {

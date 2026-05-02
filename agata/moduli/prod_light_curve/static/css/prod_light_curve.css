@@ -274,6 +274,14 @@ select {
     width: 7ch;
 }
 
+.field-inline {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    min-width: auto;
+    max-width: none;
+}
+
 .field-inline-compact input {
     width: 6ch;
     padding-left: 8px;
@@ -356,6 +364,22 @@ button:disabled {
     position: absolute;
     inset: 0;
     pointer-events: none;
+}
+
+.reference-coord-readout {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    background: rgba(0, 0, 0, 0.62);
+    color: #d8eeff;
+    font-size: 0.78rem;
+    font-family: monospace;
+    padding: 4px 10px;
+    border-radius: 6px;
+    pointer-events: none;
+    z-index: 10;
+    white-space: nowrap;
+    letter-spacing: 0.03em;
 }
 
 .overlay-canvas {

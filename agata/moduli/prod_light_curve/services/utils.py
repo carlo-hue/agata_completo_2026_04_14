@@ -63,7 +63,7 @@ def normalize_preview_image(data: np.ndarray, low_percentile: float, high_percen
     # the harsh, noisy look of a purely linear 8-bit preview.
     stretch_factor = 8.0
     normalized = np.arcsinh(normalized * stretch_factor) / np.arcsinh(stretch_factor)
-    return np.asarray(np.flipud(normalized) * 255.0, dtype=np.uint8)
+    return np.asarray(np.nan_to_num(np.flipud(normalized) * 255.0, nan=0.0), dtype=np.uint8)
 
 
 def encode_grayscale_png(image_array: np.ndarray) -> bytes:
@@ -80,6 +80,21 @@ def encode_grayscale_png(image_array: np.ndarray) -> bytes:
     return signature + chunk(b"IHDR", ihdr) + chunk(b"IDAT", compressed) + chunk(b"IEND", b"")
 
 
+_PREVIEW_MAX_PX = 1024
+
+
+def _downsample_preview(arr: np.ndarray) -> np.ndarray:
+    h, w = arr.shape
+    if max(h, w) <= _PREVIEW_MAX_PX:
+        return arr
+    scale = _PREVIEW_MAX_PX / max(h, w)
+    new_h = max(1, int(h * scale))
+    new_w = max(1, int(w * scale))
+    from scipy.ndimage import zoom
+    return np.asarray(zoom(arr.astype(np.float32), (new_h / h, new_w / w), order=1, prefilter=False), dtype=np.uint8)
+
+
 def render_preview_base64(data: np.ndarray, low_percentile: float, high_percentile: float) -> str:
     preview_array = normalize_preview_image(data, low_percentile, high_percentile)
+    preview_array = _downsample_preview(preview_array)
     return base64.b64encode(encode_grayscale_png(preview_array)).decode("ascii")

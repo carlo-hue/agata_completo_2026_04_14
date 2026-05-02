@@ -101,6 +101,7 @@
                                 <img id="referenceImage" alt="Reference image" class="reference-image hidden">
                             </div>
                             <div id="referenceOverlay" class="reference-overlay hidden"></div>
+                            <div id="referenceCoordReadout" class="reference-coord-readout hidden"></div>
                         </div>
                         <div id="referenceInfo" class="detail-text">Nessuna reference image disponibile.</div>
                     </div>
@@ -163,7 +164,7 @@
                 <h2>Curva di luce</h2>
                 <div id="photometryInfo" class="detail-text">Fotometria non ancora eseguita.</div>
                 <div class="plot-controls">
-                    <label class="field-block field-compact">
+                    <label class="field-block">
                         <span>Visualizzazione</span>
                         <select id="plotModeSelect">
                             <option value="lines+markers">linee + punti</option>
@@ -173,6 +174,10 @@
                     <label class="field-block field-compact">
                         <span>Bin punti</span>
                         <input id="binSizeInput" type="number" min="1" step="1" value="1">
+                    </label>
+                    <label class="field-block field-compact field-inline">
+                        <input id="showErrorsToggle" type="checkbox" checked>
+                        <span>Barre d'errore</span>
                     </label>
                 </div>
                 <div id="lightcurvePlot" class="plot-box"></div>
