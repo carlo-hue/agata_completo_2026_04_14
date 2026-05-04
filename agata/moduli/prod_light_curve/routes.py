@@ -9,6 +9,7 @@ from .services import (
     browse_dataset_directories,
     delete_prod_session,
     estimate_selection_metrics,
+    get_frame_raw_preview,
     get_job_result,
     get_job_status,
     inspect_ground_dataset,
@@ -215,6 +216,26 @@ def create_blueprint() -> Blueprint:
             LOGGER.exception("Ground astrometry solve failed for %s", reference_path)
             return _json_error(str(err), 502)
         return jsonify(result)
+
+    @bp.post("/api/frame-preview")
+    def frame_preview_api():
+        payload = request.get_json(silent=True) or {}
+        if not isinstance(payload, dict):
+            return _json_error("payload JSON non valido", 400)
+        dataset_path = str(payload.get("dataset_path", "")).strip()
+        frame_index = payload.get("frame_index")
+        if not dataset_path:
+            return _json_error("dataset_path mancante", 400)
+        if frame_index is None:
+            return _json_error("frame_index mancante", 400)
+        try:
+            reference = get_frame_raw_preview(dataset_path, int(frame_index))
+        except ValueError as err:
+            return _json_error(str(err), 400)
+        except Exception as err:
+            LOGGER.exception("Frame preview failed for %s frame %s", dataset_path, frame_index)
+            return _json_error(str(err), 502)
+        return jsonify({"status": "ok", "reference": reference})
 
     @bp.post("/api/suggest-comparisons")
     def suggest_comparisons_api():

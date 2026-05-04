@@ -49,13 +49,14 @@ def enrich_frame_quality_with_photometry(
     comparison_flux: list[float],
     centroid_shift: list[float],
     fwhm_px: list[float | None] | None = None,
+    frame_indices: list[int] | None = None,
 ) -> dict:
-    frames = []
     flux_ratio = np.asarray(target_flux, dtype=float) / np.maximum(np.asarray(comparison_flux, dtype=float), 1e-9)
     ratio_median = float(np.nanmedian(flux_ratio)) if flux_ratio.size else 1.0
     ratio_scatter = float(np.nanstd(flux_ratio)) if flux_ratio.size else 0.0
-    shift_median = float(np.nanmedian(centroid_shift)) if centroid_shift else 0.0
-    shift_scatter = float(np.nanstd(centroid_shift)) if centroid_shift else 0.0
+    shift_arr = np.asarray(centroid_shift, dtype=float)
+    shift_median = float(np.nanmedian(shift_arr)) if shift_arr.size else 0.0
+    shift_scatter = float(np.nanstd(shift_arr)) if shift_arr.size else 0.0
 
     fwhm_array = None
     fwhm_median = None
@@ -67,21 +68,39 @@ def enrich_frame_quality_with_photometry(
             fwhm_median = float(np.median(finite_fwhm))
             fwhm_scatter = float(np.std(finite_fwhm))
 
-    for idx, (item, ratio, shift) in enumerate(zip(frame_quality["frames"], flux_ratio.tolist(), centroid_shift, strict=False)):
+    # Mappa frame_index → posizione negli array di fotometria.
+    # Se frame_indices non è fornito si assume corrispondenza posizionale.
+    if frame_indices is not None:
+        index_to_pos = {int(idx): pos for pos, idx in enumerate(frame_indices)}
+    else:
+        index_to_pos = {pos: pos for pos in range(len(flux_ratio))}
+
+    frames = []
+    for item in frame_quality["frames"]:
         suspect = bool(item.get("suspect"))
         reasons = list(item.get("suspect_reasons") or [])
-        if math.isfinite(ratio) and abs(ratio - ratio_median) > max(4.0 * ratio_scatter, 0.2):
-            suspect = True
-            reasons.append("rapporto target/comparison anomalo")
-        if math.isfinite(shift) and shift > shift_median + max(2.0, 3.0 * shift_scatter):
-            suspect = True
-            reasons.append("centroide instabile")
-        if fwhm_array is not None and idx < len(fwhm_array):
-            fwhm_val = fwhm_array[idx]
-            if fwhm_val is not None and fwhm_val > fwhm_median + max(2.0, 2.0 * fwhm_scatter):
+        pos = index_to_pos.get(item.get("index"))
+        if pos is not None:
+            ratio = float(flux_ratio[pos]) if pos < len(flux_ratio) else float("nan")
+            shift = float(centroid_shift[pos]) if pos < len(centroid_shift) else float("nan")
+            if math.isfinite(ratio) and abs(ratio - ratio_median) > max(4.0 * ratio_scatter, 0.2):
                 suspect = True
-                reasons.append(f"FWHM anomala ({fwhm_val:.1f} px)")
-        frames.append({**item, "suspect": suspect, "suspect_reasons": reasons})
+                reasons.append("rapporto target/comparison anomalo")
+            if math.isfinite(shift) and shift > shift_median + max(2.0, 3.0 * shift_scatter):
+                suspect = True
+                reasons.append("centroide instabile")
+            if fwhm_array is not None and pos < len(fwhm_array):
+                fwhm_val = fwhm_array[pos]
+                if fwhm_val is not None and fwhm_val > fwhm_median + max(2.0, 2.0 * fwhm_scatter):
+                    suspect = True
+                    reasons.append(f"FWHM anomala ({fwhm_val:.1f} px)")
+        frames.append({
+            **item,
+            "suspect": suspect,
+            "suspect_reasons": reasons,
+            "fwhm_px": (fwhm_array[pos] if fwhm_array and pos is not None and pos < len(fwhm_array) else None),
+            "centroid_shift_px": (float(centroid_shift[pos]) if pos is not None and pos < len(centroid_shift) else None),
+        })
 
     return {
         **frame_quality,

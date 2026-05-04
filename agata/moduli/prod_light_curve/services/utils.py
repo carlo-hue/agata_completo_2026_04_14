@@ -98,3 +98,31 @@ def render_preview_base64(data: np.ndarray, low_percentile: float, high_percenti
     preview_array = normalize_preview_image(data, low_percentile, high_percentile)
     preview_array = _downsample_preview(preview_array)
     return base64.b64encode(encode_grayscale_png(preview_array)).decode("ascii")
+
+
+def render_linear_raw_base64(data: np.ndarray, low_percentile: float, high_percentile: float) -> dict:
+    """Array uint8 lineare (senza stretch) per rendering client-side interattivo."""
+    finite = np.asarray(data, dtype=float)
+    finite_vals = finite[np.isfinite(finite)]
+    if finite_vals.size == 0:
+        return {"data": "", "width": 0, "height": 0}
+    vmin = float(np.percentile(finite_vals, low_percentile))
+    vmax = float(np.percentile(finite_vals, high_percentile))
+    if not np.isfinite(vmin):
+        vmin = float(np.nanmin(finite_vals))
+    if not np.isfinite(vmax):
+        vmax = float(np.nanmax(finite_vals))
+    if vmax <= vmin:
+        vmax = vmin + 1.0
+    clipped = np.clip(finite, vmin, vmax)
+    linear = np.asarray(
+        np.nan_to_num(np.flipud((clipped - vmin) / max(vmax - vmin, 1e-9)) * 255.0, nan=0.0),
+        dtype=np.uint8,
+    )
+    linear = _downsample_preview(linear)
+    h, w = linear.shape
+    return {
+        "data": base64.b64encode(linear.tobytes()).decode("ascii"),
+        "width": int(w),
+        "height": int(h),
+    }

@@ -6,7 +6,7 @@ from astropy.wcs.utils import proj_plane_pixel_scales
 import numpy as np
 
 from ..config import settings
-from .utils import render_preview_base64, rounded_or_none
+from .utils import render_linear_raw_base64, render_preview_base64, rounded_or_none
 
 
 def build_reference_payload(dataset_summary: dict) -> dict:
@@ -91,6 +91,11 @@ def build_reference_payload_from_frame(
             "telescop": header.get("TELESCOP"),
         },
         "preview_png_base64": render_preview_base64(
+            data,
+            settings.preview_percentile_low,
+            settings.preview_percentile_high,
+        ),
+        "raw_linear": render_linear_raw_base64(
             data,
             settings.preview_percentile_low,
             settings.preview_percentile_high,

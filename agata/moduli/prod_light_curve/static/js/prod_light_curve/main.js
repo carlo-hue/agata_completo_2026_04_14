@@ -23,7 +23,7 @@
     const zoomInButton = document.getElementById("zoomInButton");
     const zoomOutButton = document.getElementById("zoomOutButton");
     const zoomResetButton = document.getElementById("zoomResetButton");
-    const referenceImage = document.getElementById("referenceImage");
+    const referenceCanvas = document.getElementById("referenceCanvas");
     const referenceTitle = document.getElementById("referenceTitle");
     const referenceStage = document.getElementById("referenceStage");
     const referenceViewport = document.getElementById("referenceViewport");
@@ -35,6 +35,9 @@
     const comparisonCandidatesBox = document.getElementById("comparisonCandidatesBox");
     const frameQualitySummary = document.getElementById("frameQualitySummary");
     const frameQualityBox = document.getElementById("frameQualityBox");
+    const frameQualityActions = document.getElementById("frameQualityActions");
+    const frameSelectAllButton = document.getElementById("frameSelectAllButton");
+    const frameSelectGoodButton = document.getElementById("frameSelectGoodButton");
     const sessionsBox = document.getElementById("sessionsBox");
     const photometryInfo = document.getElementById("photometryInfo");
     const plotModeSelect = document.getElementById("plotModeSelect");
@@ -47,6 +50,9 @@
     const fwhmPlot = document.getElementById("fwhmPlot");
     const airmassPlot = document.getElementById("airmassPlot");
     const referenceCoordReadout = document.getElementById("referenceCoordReadout");
+    const stretchModeSelect = document.getElementById("stretchModeSelect");
+    const stretchMinInput = document.getElementById("stretchMinInput");
+    const stretchMaxInput = document.getElementById("stretchMaxInput");
     const statusBox = document.getElementById("statusBox");
     const errorBox = document.getElementById("errorBox");
     const apertureRadiusInput = document.getElementById("apertureRadiusInput");
@@ -67,10 +73,15 @@
         sessionsUrl: appRoot.dataset.sessionsUrl,
         restoreUrl: appRoot.dataset.restoreUrl,
         deleteUrl: appRoot.dataset.deleteUrl,
+        framePreviewUrl: appRoot.dataset.framePreviewUrl,
     };
 
     let inspectResult = null;
     let runResult = null;
+    let currentReferenceFrameIndex = null;
+    let rawPixelData = null;
+    let rawWidth = 0;
+    let rawHeight = 0;
     let editMode = "target";
     let selectedTarget = null;
     let selectedComparisons = [];
@@ -80,6 +91,14 @@
     let browserVisible = false;
     let browserState = null;
     let selectedBrowserPath = "";
+    let browserEntries = [];
+    const datasetBrowserSortState = { key: null, dir: 1 };
+    const datasetBrowserHeaders = [
+        { key: "name",   label: "Nome",   sortable: true },
+        { key: "date",   label: "Data",   sortable: true },
+        { key: "filter", label: "Filtro", sortable: true },
+        { key: "fits",   label: "FITS",   numeric: true, sortable: true },
+    ];
     let selectionMetricsRequestId = 0;
     const referenceView = {
         scale: 1,
@@ -181,6 +200,15 @@
         return String(template || "").replace("__JOB_ID__", encodeURIComponent(jobId));
     }
 
+    function parseDatasetName(name) {
+        const dateMatch = name.match(/(\d{4}-\d{2}-\d{2})/);
+        const filterMatch = name.match(/[_-](L|R|G|B|Ha|Hb|SII|OIII|V|I|C)(?:[_.]|$)/i);
+        return {
+            date: dateMatch ? dateMatch[1] : null,
+            filter: filterMatch ? filterMatch[1].toUpperCase() : null,
+        };
+    }
+
     function renderDatasetBrowser(payload) {
         browserState = payload;
         if (!selectedBrowserPath) {
@@ -188,52 +216,43 @@
         }
         datasetBrowserList.innerHTML = "";
 
-        const entries = (payload.directories || []).map(function (item) {
-            return {
-                kind: "directory",
-                name: item.name,
-                path: item.path,
-                meta: Number(item.direct_fits_count || 0) > 0 ? `(${Number(item.direct_fits_count || 0)} FITS)` : "",
-                directFitsCount: Number(item.direct_fits_count || 0),
-            };
-        });
-
-        if (!entries.length) {
+        const rawDirs = payload.directories || [];
+        if (!rawDirs.length) {
             datasetBrowserList.textContent = "Nessuna osservazione disponibile.";
             datasetBrowserList.className = "frame-quality-box empty-state";
             return;
         }
 
-        datasetBrowserList.className = "frame-quality-box";
-        entries.forEach(function (item) {
-            const row = document.createElement("div");
-            row.className = `dataset-browser-entry${selectedBrowserPath === item.path ? " is-selected" : ""}`;
+        browserEntries = rawDirs.map(function (item) {
+            const { date, filter } = parseDatasetName(item.name);
+            return {
+                name: item.name,
+                path: item.path,
+                date: date,
+                filter: filter,
+                fits: Number(item.direct_fits_count || 0) || null,
+                directFitsCount: Number(item.direct_fits_count || 0),
+            };
+        });
 
-            const textWrap = document.createElement("div");
-            textWrap.className = "dataset-browser-entry-main";
-            textWrap.addEventListener("click", function () {
+        datasetBrowserList.className = "table-box";
+        datasetBrowserList.appendChild(buildCandidateTable({
+            headers: datasetBrowserHeaders,
+            sortState: datasetBrowserSortState,
+            rows: browserEntries,
+            isSelected: (item) => item.path === selectedBrowserPath,
+            onClick: (item) => {
                 selectedBrowserPath = item.path;
                 renderDatasetBrowser(browserState);
-            });
-            const name = document.createElement("div");
-            name.className = "dataset-browser-entry-name";
-            name.textContent = item.name;
-            const meta = document.createElement("div");
-            meta.className = "dataset-browser-entry-meta";
-            meta.textContent = item.meta;
-            textWrap.appendChild(name);
-            if (item.meta) {
-                textWrap.appendChild(meta);
-            }
+                renderDatasetSelectionDetails();
+            },
+        }));
 
-            row.appendChild(textWrap);
-            datasetBrowserList.appendChild(row);
-        });
-        renderDatasetSelectionDetails(entries);
+        renderDatasetSelectionDetails();
     }
 
-    function renderDatasetSelectionDetails(entries) {
-        const selectedEntry = (entries || []).find(function (item) {
+    function renderDatasetSelectionDetails() {
+        const selectedEntry = browserEntries.find(function (item) {
             return item.path === selectedBrowserPath;
         }) || null;
 
@@ -287,27 +306,81 @@
         }
     }
 
+    function decodeRawPixels(base64str) {
+        const binary = atob(base64str);
+        const arr = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+            arr[i] = binary.charCodeAt(i);
+        }
+        return arr;
+    }
+
+    function stretchValue(v, mode) {
+        if (v <= 0) return 0;
+        if (v >= 1) return 1;
+        switch (mode) {
+            case "sqrt": return Math.sqrt(v);
+            case "log": return Math.log1p(v * 9) / Math.log(10);
+            case "asinh": return Math.asinh(v * 8.0) / Math.asinh(8.0);
+            default: return v;
+        }
+    }
+
+    function renderReferenceCanvas() {
+        if (!rawPixelData || !rawWidth || !rawHeight) return;
+        referenceCanvas.width = rawWidth;
+        referenceCanvas.height = rawHeight;
+        const ctx = referenceCanvas.getContext("2d");
+        const imageData = ctx.createImageData(rawWidth, rawHeight);
+        const vmin = Number(stretchMinInput.value);
+        const vmax = Number(stretchMaxInput.value);
+        const range = Math.max(vmax - vmin, 1);
+        const mode = stretchModeSelect.value;
+        const px = imageData.data;
+        for (let i = 0; i < rawPixelData.length; i++) {
+            const v = Math.max(0, Math.min(1, (rawPixelData[i] - vmin) / range));
+            const out = Math.round(stretchValue(v, mode) * 255);
+            const j = i << 2;
+            px[j] = px[j + 1] = px[j + 2] = out;
+            px[j + 3] = 255;
+        }
+        ctx.putImageData(imageData, 0, 0);
+    }
+
     function renderReference(result) {
         const reference = result && result.reference;
-        if (!reference || !reference.preview_png_base64) {
+        const rawLinear = reference && reference.raw_linear;
+        if (!reference || !rawLinear || !rawLinear.data) {
             referenceTitle.textContent = "Reference image";
-            referenceImage.classList.add("hidden");
+            referenceCanvas.classList.add("hidden");
             referenceViewport.classList.add("hidden");
             referenceOverlay.classList.add("hidden");
             referenceInfo.textContent = "Nessuna reference image disponibile.";
+            rawPixelData = null;
+            rawWidth = 0;
+            rawHeight = 0;
             return;
         }
         const observationName = pathDisplayName(currentSelectedDatasetPath());
         referenceTitle.textContent = observationName
             ? `Reference image (${observationName})`
             : "Reference image";
-        referenceImage.src = `data:image/png;base64,${reference.preview_png_base64}`;
-        referenceImage.classList.remove("hidden");
+        rawPixelData = decodeRawPixels(rawLinear.data);
+        rawWidth = rawLinear.width;
+        rawHeight = rawLinear.height;
+        renderReferenceCanvas();
+        referenceCanvas.classList.remove("hidden");
         referenceViewport.classList.remove("hidden");
         referenceOverlay.classList.remove("hidden");
         resetReferenceView();
         updateReferenceViewportLayout();
-        referenceInfo.textContent = `${reference.source.filename} | ${reference.shape[1]}x${reference.shape[0]} | mode=${reference.mode}`;
+        const frameNum = reference.frame_index !== undefined && reference.frame_index !== null
+            ? `#${reference.frame_index + 1} `
+            : "";
+        currentReferenceFrameIndex = reference.frame_index !== undefined && reference.frame_index !== null
+            ? reference.frame_index
+            : null;
+        referenceInfo.textContent = `${frameNum}${reference.source.filename} | ${reference.shape[1]}x${reference.shape[0]} | mode=${reference.mode}`;
         renderOverlay();
     }
 
@@ -563,6 +636,12 @@
     }
 
     function renderTargeting(result) {
+        const solved = result && result.reference
+            && result.reference.astrometry && result.reference.astrometry.solved;
+        const activeMetricHeaders = solved
+            ? selectionMetricHeaders
+            : selectionMetricHeaders.filter(h => h.key !== "ra_deg" && h.key !== "dec_deg");
+
         const targeting = result.targeting || {};
         selectedTarget = selectedTarget || targeting.auto_target || null;
         targetInfo.innerHTML = "";
@@ -572,7 +651,7 @@
         } else {
             targetInfo.className = "table-box";
             targetInfo.appendChild(buildCandidateTable({
-                headers: selectionMetricHeaders,
+                headers: activeMetricHeaders,
                 rows: [buildSelectionMetricsRow(selectedTarget, "target")],
             }));
         }
@@ -591,7 +670,11 @@
                 headers: [
                     { key: "label", label: "Target" },
                     { key: "catalog_name", label: "Catalogo" },
-                    { key: "distance_from_center_px", label: "d px", numeric: true },
+                    { key: "ra_deg", label: "RA", centered: true, formatter: (v) => formatRa(Number(v)) },
+                    { key: "ra_deg", label: "RA (°)", numeric: true, formatter: (v) => Number(v).toFixed(4) },
+                    { key: "dec_deg", label: "Dec", centered: true, formatter: (v) => formatDec(Number(v)) },
+                    { key: "dec_deg", label: "Dec (°)", numeric: true, formatter: (v) => Number(v).toFixed(4) },
+                    { key: "distance_from_center_px", label: "d centro (px)", numeric: true },
                 ],
                 rows: candidates,
                 isSelected: function (item) {
@@ -617,7 +700,7 @@
         if (!comparisonCandidates.length && selectedComparisons.length) {
             comparisonCandidatesBox.className = "table-box";
             comparisonCandidatesBox.appendChild(buildCandidateTable({
-                headers: selectionMetricHeaders,
+                headers: activeMetricHeaders,
                 rows: selectedComparisons.map(function (item, index) {
                     return buildSelectionMetricsRow(item, `man ${index + 1}`);
                 }),
@@ -748,6 +831,36 @@
         }
     }
 
+    async function handleSelectReferenceFrame(frameIndex) {
+        if (!inspectResult) return;
+        const datasetPath = currentSelectedDatasetPath();
+        if (!datasetPath) return;
+        setStatus(`Caricamento frame #${frameIndex + 1} come reference...`, "status-neutral");
+        try {
+            const { response, data } = await postJson(endpoints.framePreviewUrl, {
+                dataset_path: datasetPath,
+                frame_index: frameIndex,
+            });
+            if (!response.ok || data.status === "error") {
+                setStatus("Errore nel caricamento del frame.", "status-error");
+                return;
+            }
+            inspectResult = {
+                ...inspectResult,
+                reference: data.reference,
+                targeting: {
+                    ...(inspectResult.targeting || {}),
+                    detected_sources: [],
+                },
+            };
+            renderReference(inspectResult);
+            renderFrameQuality(inspectResult);
+            setStatus(`Frame #${frameIndex + 1} selezionato come reference.`, "status-success");
+        } catch (err) {
+            setStatus("Errore di rete nel caricamento del frame.", "status-error");
+        }
+    }
+
     async function handleSuggestComparisons() {
         if (!inspectResult) {
             return;
@@ -797,42 +910,108 @@
         const table = document.createElement("table");
         table.className = "candidate-table";
 
+        const state = config.sortState || { key: null, dir: 1 };
+
         const thead = document.createElement("thead");
         const headRow = document.createElement("tr");
         config.headers.forEach((header) => {
             const th = document.createElement("th");
             th.textContent = header.label;
+            if (header.centered) th.classList.add("is-centered");
+            if (header.sortable) {
+                th.classList.add("is-sortable");
+                if (state.key === header.key) {
+                    th.setAttribute("data-sort", state.dir === 1 ? "asc" : "desc");
+                }
+                th.addEventListener("click", function () {
+                    if (state.key === header.key) {
+                        state.dir *= -1;
+                    } else {
+                        state.key = header.key;
+                        state.dir = 1;
+                    }
+                    headRow.querySelectorAll("th").forEach(t => t.removeAttribute("data-sort"));
+                    th.setAttribute("data-sort", state.dir === 1 ? "asc" : "desc");
+                    renderTbody();
+                });
+            }
             headRow.appendChild(th);
         });
         thead.appendChild(headRow);
         table.appendChild(thead);
 
         const tbody = document.createElement("tbody");
-        config.rows.forEach((item) => {
-            const tr = document.createElement("tr");
-            if (config.isSelected && config.isSelected(item)) {
-                tr.classList.add("is-selected");
-            }
-            tr.addEventListener("click", function () {
-                config.onClick(item);
-            });
-
-            config.headers.forEach((header) => {
-                const td = document.createElement("td");
-                const rawValue = item[header.key];
-                td.textContent = rawValue === null || rawValue === undefined || rawValue === "" ? "-" : String(rawValue);
-                if (header.numeric) {
-                    td.classList.add("is-numeric");
-                } else if ((rawValue === null || rawValue === undefined ? 0 : String(rawValue).length) < 14) {
-                    td.classList.add("is-compact");
-                }
-                tr.appendChild(td);
-            });
-            tbody.appendChild(tr);
-        });
-
         table.appendChild(tbody);
+
+        function getSortedRows() {
+            if (!state.key) return config.rows;
+            return [...config.rows].sort((a, b) => {
+                const va = a[state.key];
+                const vb = b[state.key];
+                const na = parseFloat(va);
+                const nb = parseFloat(vb);
+                if (!isNaN(na) && !isNaN(nb)) return (na - nb) * state.dir;
+                return String(va ?? "").localeCompare(String(vb ?? "")) * state.dir;
+            });
+        }
+
+        function renderTbody() {
+            tbody.innerHTML = "";
+            getSortedRows().forEach((item) => {
+                const tr = document.createElement("tr");
+                if (config.isSelected && config.isSelected(item)) {
+                    tr.classList.add("is-selected");
+                }
+                if (config.rowClass) {
+                    const extra = config.rowClass(item);
+                    if (extra) tr.classList.add(...extra.split(" ").filter(Boolean));
+                }
+                if (config.onClick) {
+                    tr.addEventListener("click", function () {
+                        config.onClick(item);
+                    });
+                }
+                if (config.onDblClick) {
+                    tr.addEventListener("dblclick", function (e) {
+                        e.stopPropagation();
+                        config.onDblClick(item);
+                    });
+                }
+                config.headers.forEach((header) => {
+                    const td = document.createElement("td");
+                    const rawValue = item[header.key];
+                    const isEmpty = rawValue === null || rawValue === undefined || rawValue === "";
+                    td.textContent = isEmpty ? "-" : (header.formatter ? header.formatter(rawValue) : String(rawValue));
+                    if (header.centered) {
+                        td.classList.add("is-centered");
+                    } else if (header.numeric) {
+                        td.classList.add("is-numeric");
+                    } else if ((isEmpty ? 0 : String(rawValue).length) < 14) {
+                        td.classList.add("is-compact");
+                    }
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+        }
+
+        renderTbody();
         return table;
+    }
+
+    function parseHfrRms(filename) {
+        const hfrMatch = filename && filename.match(/hfr([\d.]+)/i);
+        const rmsMatch = filename && filename.match(/rms([\d.]+)/i);
+        return {
+            hfr: hfrMatch ? parseFloat(hfrMatch[1]) : null,
+            rms: rmsMatch ? parseFloat(rmsMatch[1]) : null,
+        };
+    }
+
+    function formatJdToUtc(jd) {
+        if (!jd || !Number.isFinite(jd)) return null;
+        const date = new Date((jd - 2440587.5) * 86400000);
+        return date.toISOString().slice(11, 16);
     }
 
     function clamp(value, min, max) {
@@ -925,6 +1104,20 @@
         void refreshSelectionMetrics();
     }
 
+    const frameQualitySortState = { key: null, dir: 1 };
+
+    const frameQualityHeaders = [
+        { key: "num",    label: "#",     numeric: true,  sortable: true },
+        { key: "ora",    label: "Ora (UTC)",              sortable: true },
+        { key: "hfr",    label: "HFR",   numeric: true,  sortable: true },
+        { key: "rms",    label: "RMS",      numeric: true,  sortable: true },
+        { key: "fwhm",   label: "FWHM (px)", numeric: true, sortable: true },
+        { key: "shift",  label: "Shift (px)", numeric: true, sortable: true },
+        { key: "sat_pct",label: "Sat%",  numeric: true,  sortable: true },
+        { key: "fondo",  label: "Fondo", numeric: true,  sortable: true },
+        { key: "note",   label: "Note" },
+    ];
+
     function renderFrameQuality(result) {
         const frameQuality = result.frame_quality || {};
         const frames = frameQuality.frames || [];
@@ -944,26 +1137,66 @@
         if (!frames.length) {
             frameQualityBox.textContent = "Nessun frame disponibile.";
             frameQualityBox.className = "frame-quality-box empty-state";
+            frameQualityActions.classList.add("hidden");
             return;
         }
-        frameQualityBox.className = "frame-quality-box";
-        frames.forEach((item) => {
-            const row = document.createElement("button");
-            row.type = "button";
-            const enabled = frameInclusion.has(item.index);
-            row.className = `frame-row${enabled ? " is-selected" : ""}${item.suspect ? " is-suspect" : ""}`;
-            row.textContent = `#${item.index + 1} ${item.filename} | score=${item.quality_score ?? "-"}${item.suspect ? " | sospetto" : ""}`;
-            row.title = (item.suspect_reasons || []).join(", ");
-            row.addEventListener("click", function () {
-                if (frameInclusion.has(item.index)) {
-                    frameInclusion.delete(item.index);
+
+        const rows = frames.map((item) => {
+            const { hfr, rms } = parseHfrRms(item.filename);
+            return {
+                num: item.index + 1,
+                ora: formatJdToUtc(item.time_jd),
+                hfr: hfr !== null ? hfr.toFixed(2) : null,
+                rms: rms !== null ? rms.toFixed(2) : null,
+                fwhm: item.fwhm_px !== null && item.fwhm_px !== undefined
+                    ? Number(item.fwhm_px).toFixed(2) : null,
+                shift: item.centroid_shift_px !== null && item.centroid_shift_px !== undefined
+                    ? Number(item.centroid_shift_px).toFixed(2) : null,
+                sat_pct: item.saturated_fraction !== null && item.saturated_fraction !== undefined
+                    ? (item.saturated_fraction * 100).toFixed(2)
+                    : null,
+                fondo: item.median !== null && item.median !== undefined
+                    ? Math.round(item.median)
+                    : null,
+                note: (item.suspect_reasons || []).join(", ") || null,
+                _index: item.index,
+                _suspect: item.suspect,
+            };
+        });
+
+        frameQualityBox.className = "table-box";
+        frameQualityActions.classList.remove("hidden");
+        frameSelectAllButton.onclick = () => {
+            frames.forEach(item => frameInclusion.add(item.index));
+            renderFrameQuality(result);
+        };
+        frameSelectGoodButton.onclick = () => {
+            frameInclusion = new Set();
+            frames.forEach(item => { if (!item.suspect) frameInclusion.add(item.index); });
+            if (!frameInclusion.size) frames.forEach(item => frameInclusion.add(item.index));
+            renderFrameQuality(result);
+        };
+        frameQualityBox.appendChild(buildCandidateTable({
+            headers: frameQualityHeaders,
+            sortState: frameQualitySortState,
+            rows,
+            isSelected: (item) => frameInclusion.has(item._index),
+            rowClass: (item) => [
+                item._suspect ? "is-suspect" : "",
+                item._index === currentReferenceFrameIndex ? "is-reference" : "",
+            ].filter(Boolean).join(" "),
+            onClick: (item) => {
+                if (frameInclusion.has(item._index)) {
+                    frameInclusion.delete(item._index);
                 } else {
-                    frameInclusion.add(item.index);
+                    frameInclusion.add(item._index);
                 }
                 renderFrameQuality(result);
-            });
-            frameQualityBox.appendChild(row);
-        });
+            },
+            onDblClick: (item) => {
+                void handleSelectReferenceFrame(item._index);
+            },
+        }));
     }
 
     function renderSessions(sessionsPayload) {
@@ -1721,8 +1954,10 @@
     runButton.addEventListener("click", handleRun);
     saveButton.addEventListener("click", handleSave);
     suggestComparisonsButton.addEventListener("click", handleSuggestComparisons);
-    referenceImage.addEventListener("load", updateReferenceViewportLayout);
     window.addEventListener("resize", updateReferenceViewportLayout);
+    stretchModeSelect.addEventListener("change", renderReferenceCanvas);
+    stretchMinInput.addEventListener("input", renderReferenceCanvas);
+    stretchMaxInput.addEventListener("input", renderReferenceCanvas);
     apertureRadiusInput.addEventListener("input", function () {
         renderOverlay();
         void refreshSelectionMetrics();

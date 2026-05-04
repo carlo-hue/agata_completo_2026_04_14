@@ -366,6 +366,22 @@ button:disabled {
     pointer-events: none;
 }
 
+.reference-stretch-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.stretch-range {
+    padding: 2px 0;
+    border: 1px solid #c7d4dc;
+    border-radius: 4px;
+    width: 90px;
+    cursor: pointer;
+}
+
 .reference-coord-readout {
     position: absolute;
     bottom: 8px;
@@ -479,12 +495,59 @@ button:disabled {
     white-space: nowrap;
 }
 
+.candidate-table th.is-centered,
+.candidate-table td.is-centered {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
 .candidate-table td.is-compact {
     white-space: nowrap;
 }
 
 .candidate-table tr:last-child td {
     border-bottom: 0;
+}
+
+.candidate-table th.is-sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.candidate-table th.is-sortable:hover {
+    background: #dce5e9;
+}
+
+.candidate-table th[data-sort="asc"]::after {
+    content: " ↑";
+    opacity: 0.7;
+}
+
+.candidate-table th[data-sort="desc"]::after {
+    content: " ↓";
+    opacity: 0.7;
+}
+
+.frame-quality-actions {
+    display: flex;
+    gap: 8px;
+    margin: 8px 0 4px;
+}
+
+.frame-quality-hint {
+    margin: 6px 0 0;
+    font-size: 0.82rem;
+    color: #7a8f9a;
+}
+
+.candidate-table tbody tr.is-reference {
+    background: #e8f4e8;
+    font-weight: 600;
+}
+
+.candidate-table tbody tr.is-reference.is-selected {
+    background: #d6edde;
 }
 
 .list-item,

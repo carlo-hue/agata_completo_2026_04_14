@@ -46,6 +46,7 @@
             data-query-targets-url="{{ url_for('prod_light_curve.query_targets_api') }}"
             data-run-url="{{ url_for('prod_light_curve.run_api') }}"
             data-save-url="{{ url_for('prod_light_curve.save_api') }}"
+            data-frame-preview-url="{{ url_for('prod_light_curve.frame_preview_api') }}"
             data-suggest-comparisons-url="{{ url_for('prod_light_curve.suggest_comparisons_api') }}"
             data-sessions-url="{{ url_for('prod_light_curve.sessions_api') }}"
             data-restore-url="{{ url_for('prod_light_curve.restore_api') }}"
@@ -96,9 +97,28 @@
                             <button id="zoomOutButton" type="button" class="edit-mode-button" disabled>zoom -</button>
                             <button id="zoomResetButton" type="button" class="edit-mode-button" disabled>reset view</button>
                         </div>
+                        <div class="reference-stretch-row">
+                            <label class="field-block field-inline">
+                                <span>Stretch</span>
+                                <select id="stretchModeSelect">
+                                    <option value="asinh" selected>asinh</option>
+                                    <option value="linear">lineare</option>
+                                    <option value="sqrt">sqrt</option>
+                                    <option value="log">log</option>
+                                </select>
+                            </label>
+                            <label class="field-block field-inline">
+                                <span>Min</span>
+                                <input id="stretchMinInput" class="stretch-range" type="range" min="0" max="254" value="0">
+                            </label>
+                            <label class="field-block field-inline">
+                                <span>Max</span>
+                                <input id="stretchMaxInput" class="stretch-range" type="range" min="1" max="255" value="255">
+                            </label>
+                        </div>
                         <div id="referenceStage" class="reference-stage">
                             <div id="referenceViewport" class="reference-viewport hidden">
-                                <img id="referenceImage" alt="Reference image" class="reference-image hidden">
+                                <canvas id="referenceCanvas" class="reference-image"></canvas>
                             </div>
                             <div id="referenceOverlay" class="reference-overlay hidden"></div>
                             <div id="referenceCoordReadout" class="reference-coord-readout hidden"></div>
@@ -153,6 +173,11 @@
                     <h2>Frame quality</h2>
                     <div id="frameQualitySummary" class="detail-text">Frame quality non ancora calcolata.</div>
                     <div id="frameQualityBox" class="frame-quality-box empty-state">Nessun frame disponibile.</div>
+                    <div id="frameQualityActions" class="frame-quality-actions hidden">
+                        <button id="frameSelectAllButton" type="button" class="button-secondary">Seleziona tutti</button>
+                        <button id="frameSelectGoodButton" type="button" class="button-secondary">Solo non sospetti</button>
+                    </div>
+                    <p class="frame-quality-hint">Click: includi/escludi (click di nuovo per recuperare) &nbsp;·&nbsp; Doppio click: imposta come reference image</p>
                 </section>
                 <section class="panel">
                     <h2>Sessioni tecniche</h2>

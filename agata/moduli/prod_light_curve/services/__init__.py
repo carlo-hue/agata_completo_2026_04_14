@@ -3,13 +3,14 @@ from __future__ import annotations
 from .astrometry_service import solve_reference_astrometry
 from .browse_service import browse_dataset_directories
 from .job_service import get_job_result, get_job_status, start_inspect_job
-from .pipeline_service import estimate_selection_metrics, inspect_ground_dataset, query_ground_target_candidates, run_ground_photometry, suggest_ground_comparison_stars
+from .pipeline_service import estimate_selection_metrics, get_frame_raw_preview, inspect_ground_dataset, query_ground_target_candidates, run_ground_photometry, suggest_ground_comparison_stars
 from .save_service import delete_prod_session, list_prod_sessions, restore_prod_session, save_prod_session
 
 __all__ = [
     "browse_dataset_directories",
     "delete_prod_session",
     "estimate_selection_metrics",
+    "get_frame_raw_preview",
     "get_job_result",
     "get_job_status",
     "inspect_ground_dataset",

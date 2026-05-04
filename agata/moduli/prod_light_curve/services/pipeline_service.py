@@ -7,7 +7,7 @@ import astropy.units as u
 
 from ..config import settings
 from .catalog_service import build_target_candidates, validate_reference_wcs
-from .dataset_service import build_dataset_summary, load_reference_frame
+from .dataset_service import build_dataset_summary, find_fits_files, load_fits_frame, load_reference_frame
 from .frame_quality_service import build_frame_quality_summary, enrich_frame_quality_with_photometry
 from .photometry_service import measure_reference_aperture_metrics, normalize_photometry_params, run_differential_photometry
 from .reference_service import build_reference_payload, build_reference_payload_from_frame
@@ -172,7 +172,7 @@ def inspect_ground_dataset(dataset_path: str, *, progress_callback=None) -> dict
     inspection = _build_base_inspection(
         dataset_path,
         include_wcs=False,
-        include_time_jd=False,
+        include_time_jd=True,
         progress_callback=progress_callback,
     )
     dataset_summary = inspection["dataset_summary"]
@@ -283,6 +283,22 @@ def query_ground_target_candidates(dataset_path: str, *, search_radius_arcsec: f
     }
 
 
+def get_frame_raw_preview(dataset_path: str, frame_index: int) -> dict:
+    fits_files = find_fits_files(dataset_path)
+    if not fits_files:
+        raise ValueError("Nessun file FITS trovato nel dataset.")
+    if frame_index < 0 or frame_index >= len(fits_files):
+        raise ValueError(f"frame_index {frame_index} fuori range (0–{len(fits_files) - 1}).")
+    frame = load_fits_frame(fits_files[frame_index], include_time_jd=False, include_wcs=False)
+    return build_reference_payload_from_frame(
+        frame,
+        frame_index=frame_index,
+        mode="manual",
+        message=f"Reference image selezionata manualmente (frame #{frame_index + 1}).",
+        solved=False,
+    )
+
+
 def suggest_ground_comparison_stars(dataset_path: str, target: dict | None = None) -> dict:
     inspection = _build_base_inspection(dataset_path, include_wcs=False, include_time_jd=False)
     effective_target = target if isinstance(target, dict) else inspection["auto_target"]
@@ -363,6 +379,7 @@ def run_ground_photometry(payload: dict) -> dict:
         photometry_result["series"]["comparison_flux"],
         photometry_result["series"]["centroid_shift_px"],
         fwhm_px=photometry_result["series"].get("fwhm_px"),
+        frame_indices=included_frame_indices,
     )
 
     return {
