@@ -1,12 +1,12 @@
 # CLAUDE.md - Astrogen / AGATA
 
-**Version**: 2.9.9 | Flask + MySQL/MariaDB | Python 3.12
+**Version**: 2.9.9 | Flask + PostgreSQL | Python 3.12
 
 ---
 
 ## Cos'e Astrogen
 
-Applicazione web per analisi astronomica: stelle variabili, esopianeti, galassie nane, mappe stellari di campo. Flask backend con MySQL/MariaDB, architettura multi-tenant con RBAC (Role-Based Access Control), autenticazione OAuth 2.0 Google. AI Advisor (Claude/Cerebras) per raccomandazioni intelligenti. Integrazione cataloghi esterni (Gaia DR3, VSX, TESS, ZTF, ASAS-SN, OGLE, Vizier). Knowledge Base con ricerca semantica. VAST automation per fotometria automatizzata da immagini FITS.
+Applicazione web per analisi astronomica: stelle variabili, esopianeti, galassie nane, mappe stellari di campo. Flask backend con PostgreSQL, architettura multi-tenant con RBAC (Role-Based Access Control), autenticazione OAuth 2.0 Google. AI Advisor (Claude/Cerebras) per raccomandazioni intelligenti. Integrazione cataloghi esterni (Gaia DR3, VSX, TESS, ZTF, ASAS-SN, OGLE, Vizier). Knowledge Base con ricerca semantica. VAST automation per fotometria automatizzata da immagini FITS.
 
 ---
 
@@ -25,7 +25,7 @@ Ogni funzionalita e un modulo autonomo sotto `agata/moduli/`. Il modulo `field_s
     auth_models/                # SQLAlchemy ORM (TUTTI i modelli, condivisi)
     catalog/                    # Query Vizier (blueprint legacy)
     kb/                         # Knowledge Base (blueprint legacy)
-    core/db/                    # SessionLocal (connessione DB)
+    db.py                       # SessionLocal (connessione DB, PostgreSQL via psycopg)
     moduli/                     # === PATTERN MODULARE ===
       field_star_map/           # GOLD STANDARD - riferimento per nuovi moduli
       variable_stars/           # Analisi stelle variabili (routes/ multipli)
@@ -92,11 +92,13 @@ agata/moduli/<nome_modulo>/
 
 ## Database
 
-- **DBMS**: MySQL/MariaDB via PyMySQL + SQLAlchemy ORM
+- **DBMS**: PostgreSQL via psycopg (driver `psycopg`) + SQLAlchemy ORM
+- **Connessione**: `agata/db.py` → `SessionLocal`, `get_db()`, `get_clean_session()`
 - **Modelli**: `agata/auth_models/` (un file per entita)
 - **Schema**: `docs/DATABASE_SCHEMA.md` - **SEMPRE consultare prima di toccare il DB**
 - **Migrazioni**: SQL numerati in `docs/migrations/` (no Alembic, no skeema)
 - **Multi-tenant**: ogni query filtra per `association_id`
+- **Dialetto SQL**: usare sintassi PostgreSQL (`RETURNING`, `ON CONFLICT ... DO UPDATE`, `STRING_AGG`, `table_schema = 'public'`)
 - **Convenzione migrazioni**: `NNN_<modulo>_<descrizione>.sql` (es. `004_create_tess_bulk_import_tables.sql`)
 
 ### Aggiungere una Tabella
@@ -156,16 +158,15 @@ if [ $# -eq 0 ]; then
     exit 1
 fi
 
-# Extract password from DATABASE_URL in .env
-DB_PASSWORD=$(grep "^DATABASE_URL=" .env | python3 -c "
+# Extract connection params from DATABASE_URL in .env
+eval $(grep "^DATABASE_URL=" .env | python3 -c "
 import sys, urllib.parse
-url = sys.stdin.read().split('=')[1].strip()
+url = sys.stdin.read().split('=', 1)[1].strip()
 parsed = urllib.parse.urlparse(url)
-print(parsed.password or '')
+print(f'DB_USER={parsed.username}')
+print(f'DB_PASSWORD={parsed.password}')
+print(f'DB_NAME={parsed.path.lstrip(\"/\")}')
 ")
-
-DB_USER="aaaat01"
-DB_NAME="catalogo"
 
 # Get migration files
 MIGRATIONS=$(ls $1 2>/dev/null)
@@ -188,13 +189,7 @@ for MIGRATION_FILE in $MIGRATIONS; do
     echo "🚀 Applying $FILENAME..."
 
     # Execute migration on production via SSH
-    ssh "$PROD_USER@$PROD_SERVER" <<EOSSH
-cd $PROD_PATH
-mysql -u $DB_USER -p"$DB_PASSWORD" $DB_NAME < <(cat <<'EOSQL'
-$(cat "$MIGRATION_FILE")
-EOSQL
-)
-EOSSH
+    ssh "$PROD_USER@$PROD_SERVER" "PGPASSWORD='$DB_PASSWORD' psql -U $DB_USER -d $DB_NAME" < "$MIGRATION_FILE"
 
     if [ $? -eq 0 ]; then
         echo "✅ $FILENAME applied successfully"

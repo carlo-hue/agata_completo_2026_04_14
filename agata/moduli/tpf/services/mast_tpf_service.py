@@ -259,7 +259,7 @@ def get_mast_sectors_for_gaia(gaia_id: str, cutout_size: int = 10) -> dict:
         )
         sectors = sorted(downloaded_map)
         if sectors:
-            resolution_message = f"Controllo remoto non disponibile: {remote_error} Mostro solo i TPF gia' presenti localmente."
+            resolution_message = f"Controllo remoto non disponibile: {remote_error} Mostro solo i TPF gia' presenti sul server AGATA."
         else:
             resolution_message = f"Controllo remoto non disponibile: {remote_error}"
 
@@ -310,7 +310,7 @@ def download_tpf_from_mast(gaia_id: str, sector, cutout_size: int = 10, *, reuse
             "file_path": str(target_path),
             "downloaded": False,
             "reused_existing": True,
-            "message": "TPF gia' presente localmente, file riusato.",
+            "message": "TPF gia' presente sul server AGATA, file riusato.",
         }
 
     ra, dec, gmag, resolution_message = _resolve_gaia_coordinates(validated_gaia_id)

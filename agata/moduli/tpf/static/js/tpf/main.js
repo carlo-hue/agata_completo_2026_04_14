@@ -552,7 +552,7 @@
         const rowsHtml = orderedSectors.map((entry) => {
             const sector = entry && entry.sector !== undefined ? entry.sector : "-";
             const downloaded = !!(entry && entry.downloaded);
-            const subtitle = downloaded ? "Gia' scaricato localmente" : "Non ancora scaricato localmente";
+            const subtitle = downloaded ? "Gia' scaricato sul server AGATA" : "Non ancora scaricato";
             const filename = entry && entry.filename ? entry.filename : "Nessun file locale";
             const buttonLabel = downloaded ? "Riusa" : "Scarica TPF";
             const actionAttr = downloaded ? "data-mast-reuse" : "data-mast-download";
@@ -1103,6 +1103,24 @@
     function renderTPF(grid, masks) {
         const rowCount = Array.isArray(grid) ? grid.length : 0;
         const colCount = rowCount && Array.isArray(grid[0]) ? grid[0].length : 0;
+        const currentTpf = buildCurrentTpfView();
+
+        const pixelWorld = currentTpf && currentTpf.metadata ? currentTpf.metadata.pixel_world : null;
+        const raGrid = pixelWorld && Array.isArray(pixelWorld.ra_deg) ? pixelWorld.ra_deg : null;
+        const decGrid = pixelWorld && Array.isArray(pixelWorld.dec_deg) ? pixelWorld.dec_deg : null;
+        const customdata = rowCount ? grid.map((row, rowIdx) =>
+            row.map((flux, colIdx) => [
+                colIdx + 1,
+                rowIdx + 1,
+                Number.isFinite(Number(flux)) ? Number(flux).toFixed(1) : "-",
+                raGrid && Array.isArray(raGrid[rowIdx]) && Number.isFinite(raGrid[rowIdx][colIdx]) ? Number(raGrid[rowIdx][colIdx]).toFixed(5) : "-",
+                decGrid && Array.isArray(decGrid[rowIdx]) && Number.isFinite(decGrid[rowIdx][colIdx]) ? Number(decGrid[rowIdx][colIdx]).toFixed(5) : "-",
+            ])
+        ) : [];
+        const hovertemplate = pixelInfoEnabled
+            ? "Col %{customdata[0]} | Row %{customdata[1]}<br>Flux: %{customdata[2]}<br>RA: %{customdata[3]}°<br>Dec: %{customdata[4]}°<extra></extra>"
+            : "<extra></extra>";
+
         const traces = [{
             z: grid,
             type: "heatmap",
@@ -1110,11 +1128,12 @@
             hoverongaps: false,
             showscale: true,
             name: "TPF",
+            customdata,
+            hovertemplate,
             zmin: fixedColorScaleEnabled && fixedColorScaleRange ? fixedColorScaleRange.zmin : undefined,
             zmax: fixedColorScaleEnabled && fixedColorScaleRange ? fixedColorScaleRange.zmax : undefined,
         }];
         const shapes = [];
-        const currentTpf = buildCurrentTpfView();
         const overlay = currentTpf && currentTpf.overlay ? currentTpf.overlay : null;
         const gaiaTraces = buildGaiaOverlayTraces(overlay);
         const targetTrace = buildTargetOverlayTrace(overlay);
@@ -1198,6 +1217,7 @@
                 yanchor: "top",
             },
             shapes,
+            hovermode: "closest",
             uirevision: "tpf-frame-view",
         };
         const renderPromise = tpfPlot.data
@@ -2264,6 +2284,7 @@
         pixelInfoEnabled = !pixelInfoEnabled;
         updatePixelInfoToggleButton();
         updateEditingControls();
+        renderCurrentTpfState();
     });
 
     gaiaSizeMaxMagInput.addEventListener("input", function () {
@@ -2462,5 +2483,8 @@
     refreshSavedSessions(pageContext.gaia_source_id, null);
     if (pageContext.overview_mode && pageContext.gaia_source_id) {
         handleMastSectorSearch();
+    } else if (!pageContext.overview_mode && pageContext.gaia_source_id && pageContext.sector) {
+        handleMastSectorSearch();
+        startPipelineRun(pageContext.gaia_source_id, pageContext.sector);
     }
 })();
