@@ -129,6 +129,8 @@ flask_session/
 # Database dumps
 *.sql
 *.dump
+# Eccezione: migrazioni SQL versionati
+!docs/migrations/*.sql
 
 # =============================================================================
 # LOGS

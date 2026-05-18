@@ -1761,6 +1761,11 @@
             activeRestoredSessionId = String(data.restored_session.session_id);
         }
         lastRunResult = data;
+        if (data && data.mast_sectors && typeof data.mast_sectors === "object") {
+            lastMastSectorsResult = data.mast_sectors;
+            mastHasRemoteResults = !!data.mast_sectors.remote_available;
+            renderMastSectors(data.mast_sectors);
+        }
         saveButton.disabled = false;
         promoteButton.disabled = false;
         syncMasksFromResult(data);
@@ -2064,6 +2069,7 @@
             tpf: currentTpfPayload || lastRunResult.tpf,
             lightcurve: currentLightcurvePayload || lastRunResult.lightcurve,
             agata_context: pageContext,
+            mast_sectors: lastMastSectorsResult || null,
         };
     }
 

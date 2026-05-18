@@ -266,6 +266,8 @@ def _session_record_from_payload(payload: dict, *, gaia_source_id: str, sector: 
         mask_origin=mask_origin,
     )
 
+    mast_sectors = payload.get("mast_sectors") if isinstance(payload.get("mast_sectors"), dict) else None
+
     return {
         "gaia_source_id": int(gaia_source_id),
         "sector": sector,
@@ -278,6 +280,7 @@ def _session_record_from_payload(payload: dict, *, gaia_source_id: str, sector: 
         "background_mask_json": _serialize_json(background_mask_pixels),
         "lightcurve_json": _serialize_json({}),
         "metadata_json": _serialize_json(metadata),
+        "mast_sectors_json": _serialize_json(mast_sectors),
         "saved_by": None,
         "is_promoted": False,
         "promoted_points": 0,
@@ -304,6 +307,7 @@ def _save_tpf_session_record(session_payload: dict) -> dict:
                 background_mask_json,
                 lightcurve_json,
                 metadata_json,
+                mast_sectors_json,
                 saved_by,
                 is_promoted,
                 promoted_points
@@ -319,6 +323,7 @@ def _save_tpf_session_record(session_payload: dict) -> dict:
                 :background_mask_json,
                 :lightcurve_json,
                 :metadata_json,
+                :mast_sectors_json,
                 :saved_by,
                 :is_promoted,
                 :promoted_points
@@ -375,6 +380,7 @@ def _update_tpf_session_record(session_id: int, session_payload: dict) -> dict:
                     background_mask_json = :background_mask_json,
                     lightcurve_json = :lightcurve_json,
                     metadata_json = :metadata_json,
+                    mast_sectors_json = :mast_sectors_json,
                     saved_by = :saved_by,
                     is_promoted = :is_promoted,
                     promoted_points = :promoted_points,
@@ -476,7 +482,8 @@ def restore_tpf_session(session_id: int) -> dict:
                     mask_origin,
                     target_mask_json,
                     background_mask_json,
-                    metadata_json
+                    metadata_json,
+                    mast_sectors_json
                 FROM {TPF_SESSION_TABLE}
                 WHERE id = :session_id
                 """
@@ -502,12 +509,15 @@ def restore_tpf_session(session_id: int) -> dict:
     from .tpf_service import run_tpf_pipeline
 
     result = run_tpf_pipeline(gaia_source_id, sector, masks=manual_masks)
+    mast_sectors = _deserialize_json_field(row.get("mast_sectors_json"), None)
     result["restored_session"] = {
         "session_id": int(session_id),
         "gaia_source_id": gaia_source_id,
         "sector": sector,
         "mask_origin": row.get("mask_origin"),
     }
+    if isinstance(mast_sectors, dict):
+        result["mast_sectors"] = mast_sectors
     result["message"] = f"Sessione TPF {session_id} ripristinata."
     return result
 
