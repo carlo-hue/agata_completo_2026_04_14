@@ -14,7 +14,6 @@
     const loadVisibleFramesButton = document.getElementById("loadVisibleFramesButton");
     const findMastSectorsButton = document.getElementById("findMastSectorsButton");
     const mastCutoutSizeInput = document.getElementById("mastCutoutSizeInput");
-    const mastStatusInfo = document.getElementById("mastStatusInfo");
     const mastSectorsBox = document.getElementById("mastSectorsBox");
     const sessionRestoreBox = document.getElementById("sessionRestoreBox");
     const frameSlider = document.getElementById("frameSlider");
@@ -23,7 +22,6 @@
     const frameInfo = document.getElementById("frameInfo");
     const loadFramesInfo = document.getElementById("loadFramesInfo");
     const statusBox = document.getElementById("statusBox");
-    const saveStatusBox = document.getElementById("saveStatusBox");
     const errorBox = document.getElementById("errorBox");
     const output = document.getElementById("output");
     const returnPayloadBox = document.getElementById("returnPayloadBox");
@@ -76,7 +74,7 @@
         !appRoot || !gaiaSourceIdInput || !saveButton || !promoteButton
         || !gaiaOverlayToggleButton || !gaiaSizeToggleButton || !gaiaSizeMaxMagInput || !fixedScaleToggleButton || !pixelInfoToggleButton || !targetModeButton || !backgroundModeButton || !recalcButton || !loadVisibleFramesButton
         || !frameSlider || !frameIndexLabel || !frameTimeLabel || !frameInfo || !loadFramesInfo
-        || !statusBox || !saveStatusBox || !errorBox || !output || !returnPayloadBox
+        || !statusBox || !errorBox || !output || !returnPayloadBox
         || !sessionChoiceDialog || !sessionChoiceMessage || !sessionChoiceUpdateButton || !sessionChoiceNewButton || !sessionChoiceCancelButton
         || !targetInfo
         || !tpfInfo || !tpfHeaderMeta || !overlayInfo || !tpfDetailsInfo || !overlayDetailsInfo || !lightcurveDetailsInfo
@@ -115,8 +113,7 @@
     }
 
     function setSaveStatus(message, tone) {
-        saveStatusBox.textContent = message || "-";
-        saveStatusBox.className = `status-box ${tone || "status-neutral"}`;
+        setStatus(message, tone);
     }
 
     function setError(message) {
@@ -183,18 +180,8 @@
     }
 
     function setMastStatus(message, tone) {
-        if (!mastStatusInfo) {
-            return;
-        }
-        mastStatusInfo.textContent = message || "-";
-        mastStatusInfo.className = "detail-block detail-text";
-        if (tone === "success") {
-            mastStatusInfo.classList.add("is-success");
-        } else if (tone === "warning") {
-            mastStatusInfo.classList.add("is-warning");
-        } else if (tone === "error") {
-            mastStatusInfo.classList.add("is-error");
-        }
+        const toneMap = { success: "status-success", warning: "status-neutral", error: "status-error" };
+        setStatus(message, toneMap[tone] || "status-neutral");
     }
 
     function chooseSessionSaveMode(sessionId) {
@@ -523,14 +510,9 @@
             if (gaiaId && !mastHasRemoteResults) {
                 mastSectorsBox.className = "mast-sectors-box";
                 mastSectorsBox.innerHTML = `
-                    <div class="mast-sector-row mast-sector-row-footer">
-                        <div class="mast-sector-meta">
-                            <div class="mast-sector-title">Nessun TPF locale trovato</div>
-                            <div class="mast-sector-subtitle">Puoi verificare se esistono altri TPF disponibili su MAST per questa sorgente.</div>
-                        </div>
-                        <div class="mast-sector-actions">
-                            <button type="button" class="button-secondary" data-mast-check-remote="1">Verifica altri TPF</button>
-                        </div>
+                    <div class="mast-sector-footer">
+                        <span>Nessun TPF locale trovato. Puoi verificare se esistono settori disponibili su MAST.</span>
+                        <button type="button" class="button-secondary" data-mast-check-remote="1">Verifica altri TPF</button>
                     </div>
                 `;
             } else {
@@ -549,47 +531,53 @@
             return Number(left && left.sector) - Number(right && right.sector);
         });
 
-        const rowsHtml = orderedSectors.map((entry) => {
+        const tbodyHtml = orderedSectors.map((entry) => {
             const sector = entry && entry.sector !== undefined ? entry.sector : "-";
             const downloaded = !!(entry && entry.downloaded);
-            const subtitle = downloaded ? "Gia' scaricato sul server AGATA" : "Non ancora scaricato";
-            const filename = entry && entry.filename ? entry.filename : "Nessun file locale";
+            const statusText = downloaded ? "Sul server AGATA" : "Non scaricato";
+            const filename = entry && entry.filename ? entry.filename : "-";
             const buttonLabel = downloaded ? "Riusa" : "Scarica TPF";
             const actionAttr = downloaded ? "data-mast-reuse" : "data-mast-download";
-            const inlineMeta = `Sector ${escapeHtml(sector)} | ${escapeHtml(subtitle)} | ${escapeHtml(filename)}`;
             return `
-                <div class="mast-sector-row${downloaded ? " is-downloaded" : ""}">
-                    <div class="mast-sector-meta">
-                        <div class="mast-sector-inline">${inlineMeta}</div>
-                    </div>
-                    <div class="mast-sector-actions">
+                <tr class="${downloaded ? "is-downloaded" : ""}">
+                    <td class="is-compact">${escapeHtml(sector)}</td>
+                    <td class="is-compact">${escapeHtml(statusText)}</td>
+                    <td class="sector-file">${escapeHtml(filename)}</td>
+                    <td class="is-compact">
                         <button
                             type="button"
                             class="button-secondary"
                             ${actionAttr}="1"
                             data-sector="${escapeHtml(sector)}"
                         >${escapeHtml(buttonLabel)}</button>
-                    </div>
-                </div>
+                    </td>
+                </tr>
             `;
         }).join("");
 
+        const tableHtml = `
+            <table class="sector-table">
+                <thead>
+                    <tr>
+                        <th>Settore</th>
+                        <th>Stato</th>
+                        <th>File</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>${tbodyHtml}</tbody>
+            </table>
+        `;
+
         const footerHtml = mastHasRemoteResults
             ? ""
-            : `
-                <div class="mast-sector-row mast-sector-row-footer">
-                    <div class="mast-sector-meta">
-                        <div class="mast-sector-title">Altri settori TESS</div>
-                        <div class="mast-sector-subtitle">Verifica se esistono altri TPF non ancora scaricati per questa sorgente.</div>
-                    </div>
-                    <div class="mast-sector-actions">
-                        <button type="button" class="button-secondary" data-mast-check-remote="1">Verifica altri TPF</button>
-                    </div>
-                </div>
-            `;
+            : `<div class="mast-sector-footer">
+                <span>Verifica se esistono altri settori TESS non ancora scaricati per questa sorgente.</span>
+                <button type="button" class="button-secondary" data-mast-check-remote="1">Verifica altri TPF</button>
+               </div>`;
 
         mastSectorsBox.className = "mast-sectors-box";
-        mastSectorsBox.innerHTML = rowsHtml + footerHtml;
+        mastSectorsBox.innerHTML = tableHtml + footerHtml;
     }
 
     function renderSavedSessions(data) {

@@ -196,51 +196,76 @@ h2 {
 }
 
 .mast-sectors-box {
-    display: grid;
-    gap: 0.7rem;
+    max-height: 280px;
+    overflow: auto;
+    border: 1px solid rgba(31, 56, 69, 0.08);
+    border-radius: 10px;
+    background: #fff;
 }
 
-.mast-sector-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0.9rem;
-    align-items: center;
-    padding: 0.8rem 0.9rem;
-    border: 1px solid var(--tpf-border);
-    border-radius: 12px;
-    background: #f8fbff;
+.mast-sectors-box.empty-state {
+    padding: 12px;
 }
 
-.mast-sector-row.is-downloaded {
-    border-color: rgba(26, 106, 58, 0.24);
+.sector-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.sector-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #eaf0f3;
+    font-weight: 600;
+    text-align: left;
+    padding: 9px 10px;
+    border-bottom: 1px solid rgba(31, 56, 69, 0.12);
+}
+
+.sector-table tbody tr:hover {
+    background: #f7fafb;
+}
+
+.sector-table tbody tr.is-downloaded:hover {
+    background: #e2f4e9;
+}
+
+.sector-table tbody tr.is-downloaded td {
     background: #eef9f2;
 }
 
-.mast-sector-meta {
-    display: grid;
-    gap: 0.2rem;
+.sector-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(31, 56, 69, 0.08);
+    vertical-align: middle;
 }
 
-.mast-sector-inline {
-    font-size: 0.9rem;
-    line-height: 1.35;
-    color: var(--tpf-text);
+.sector-table tr:last-child td {
+    border-bottom: 0;
 }
 
-.mast-sector-title {
-    font-weight: 700;
+.sector-table td.is-compact {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
 }
 
-.mast-sector-subtitle,
-.mast-sector-file {
+.sector-table td.sector-file {
     color: var(--tpf-muted);
     font-size: 0.84rem;
+    word-break: break-all;
 }
 
-.mast-sector-actions {
+.mast-sector-footer {
     display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    padding: 10px 12px;
+    border-top: 1px solid rgba(31, 56, 69, 0.08);
+    font-size: 0.88rem;
+    color: var(--tpf-muted);
 }
 
 .tpf-form {
