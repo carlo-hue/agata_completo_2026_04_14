@@ -7,8 +7,8 @@ from functools import lru_cache
 from pathlib import Path
 
 from astropy.coordinates import SkyCoord
-from astroquery.gaia import Gaia
 from astroquery.mast import Tesscut
+from astroquery.vizier import Vizier
 
 from ..config import settings
 from .utils import rounded_or_none, validate_cutout_size, validate_gaia_source_id, validate_sector
@@ -176,18 +176,18 @@ def _resolve_gaia_coordinates_via_legacy_util(gaia_id: str) -> tuple[float, floa
 
 
 def _resolve_gaia_coordinates_direct(gaia_id: str) -> tuple[float, float, float | None, str]:
-    query = f"""
-        SELECT source_id, ra, dec, phot_g_mean_mag AS gmag
-        FROM gaiadr3.gaia_source
-        WHERE source_id = {gaia_id}
-    """
-    job = Gaia.launch_job(query)
-    results = job.get_results()
-    if len(results) == 0:
-        raise MastTpfServiceError("gaia_id non risolto")
-    row = results[0]
-    gmag = row["gmag"]
-    return float(row["ra"]), float(row["dec"]), None if gmag is None else float(gmag), "Coordinate risolte via fallback Gaia DR3."
+    v = Vizier(columns=["Source", "RA_ICRS", "DE_ICRS", "Gmag"], row_limit=1)
+    result = v.query_constraints(catalog="I/355/gaiadr3", Source=f"=={gaia_id}")
+    if not result or len(result) == 0 or len(result[0]) == 0:
+        raise MastTpfServiceError("gaia_id non risolto via Vizier")
+    row = result[0][0]
+    gmag = row["Gmag"] if "Gmag" in result[0].colnames else None
+    return (
+        float(row["RA_ICRS"]),
+        float(row["DE_ICRS"]),
+        None if gmag is None or str(gmag) in ("--", "nan") else float(gmag),
+        "Coordinate risolte via Vizier (Gaia DR3).",
+    )
 
 
 def _resolve_gaia_coordinates(gaia_id: str) -> tuple[float, float, float | None, str]:
