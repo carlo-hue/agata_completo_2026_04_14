@@ -5,8 +5,8 @@ import math
 from time import perf_counter
 
 import numpy as np
-from astroquery.gaia import Gaia
 from astroquery.mast import Catalogs
+from astroquery.vizier import Vizier
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 
@@ -75,6 +75,18 @@ def _relative_flux_from_gmag(gmag: float | None, reference_gmag: float | None) -
     return max(0.05, math.pow(10.0, -0.4 * (float(gmag) - float(ref))))
 
 
+def _safe_float(value):
+    if np.ma.is_masked(value):
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(numeric):
+        return None
+    return numeric
+
+
 def _target_has_coordinates(target_info: dict | None) -> bool:
     if not isinstance(target_info, dict):
         return False
@@ -141,23 +153,28 @@ def _resolve_target_info_with_fallback(gaia_source_id: str, real_tpf: dict | Non
 
 
 def _fetch_gaia_dr3_target(gaia_source_id: str) -> dict:
-    query = f"""
-        SELECT source_id, ra, dec, phot_g_mean_mag AS gmag
-        FROM gaiadr3.gaia_source
-        WHERE source_id = {gaia_source_id}
-    """
-    job = Gaia.launch_job(query)
-    results = job.get_results()
-    if len(results) == 0:
-        raise ValueError("gaia_source_id non trovato in Gaia DR3")
-    row = results[0]
-    return {
-        "gaia_source_id": str(row["source_id"]),
-        "ra_deg": rounded_or_none(row["ra"], 6),
-        "dec_deg": rounded_or_none(row["dec"], 6),
-        "gmag": rounded_or_none(row["gmag"], 4),
-        "catalog": "Gaia DR3",
-    }
+    try:
+        vizier = Vizier(columns=['Source', 'RA_ICRS', 'DE_ICRS', 'Gmag'], catalog='I/350')
+        vizier.cache = False
+        results = vizier.query_constraints(Source=str(gaia_source_id))
+        if results is None or len(results) == 0:
+            raise ValueError("gaia_source_id non trovato in Gaia DR3")
+        table = results[0]
+        if len(table) == 0:
+            raise ValueError("gaia_source_id non trovato in Gaia DR3")
+        row = table[0]
+        LOGGER.info("Vizier query succeeded for gaia_source_id=%s: RA=%.6f DEC=%.6f Gmag=%s",
+                    gaia_source_id, row["RA_ICRS"], row["DE_ICRS"], row["Gmag"])
+        return {
+            "gaia_source_id": str(row["Source"]),
+            "ra_deg": rounded_or_none(row["RA_ICRS"], 6),
+            "dec_deg": rounded_or_none(row["DE_ICRS"], 6),
+            "gmag": rounded_or_none(row["Gmag"], 4),
+            "catalog": "Gaia DR3",
+        }
+    except Exception as err:
+        LOGGER.exception("Vizier query failed for gaia_source_id=%s: %s", gaia_source_id, err)
+        raise ValueError(f"Impossibile risolvere gaia_source_id {gaia_source_id}: {err}") from err
 
 
 def _fetch_nearby_gaia_sources(target_info: dict, radius_deg: float = NEARBY_RADIUS_DEG) -> list[dict]:
@@ -167,41 +184,47 @@ def _fetch_nearby_gaia_sources(target_info: dict, radius_deg: float = NEARBY_RAD
     dec = float(target_info["dec_deg"])
     center = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame="icrs")
     cos_dec = math.cos(math.radians(dec)) or 1.0
-    query = f"""
-        SELECT TOP {MAX_NEARBY_SOURCES + 1} source_id, ra, dec, phot_g_mean_mag AS gmag
-        FROM gaiadr3.gaia_source
-        WHERE 1 = CONTAINS(
-            POINT('ICRS', gaiadr3.gaia_source.ra, gaiadr3.gaia_source.dec),
-            CIRCLE('ICRS', {ra}, {dec}, {radius_deg})
+
+    try:
+        vizier = Vizier(columns=['Source', 'RA_ICRS', 'DE_ICRS', 'Gmag'], row_limit=MAX_NEARBY_SOURCES + 1)
+        results = vizier.query_region(
+            SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame="icrs"),
+            radius=radius_deg * u.deg,
+            catalog='I/350'  # Gaia DR3
         )
-    """
-    job = Gaia.launch_job_async(query)
-    results = job.get_results()
-    entries = []
-    for row in results:
-        source_id = str(row["source_id"])
-        if source_id == target_info["gaia_source_id"]:
-            continue
-        row_ra = float(row["ra"])
-        row_dec = float(row["dec"])
-        coord = SkyCoord(row_ra * u.deg, row_dec * u.deg, frame="icrs")
-        dist_arcsec = center.separation(coord).arcsec
-        offset_x_arcsec = (row_ra - ra) * 3600.0 * cos_dec
-        offset_y_arcsec = (row_dec - dec) * 3600.0
-        entries.append(
-            build_nearby_source_entry(
-                source_id=source_id,
-                ra=row_ra,
-                dec=row_dec,
-                gmag=row["gmag"],
-                dist_arcsec=dist_arcsec,
-                pixel_scale_arcsec=PIXEL_SCALE_ARCSEC,
-                offset_x_px=offset_x_arcsec / PIXEL_SCALE_ARCSEC,
-                offset_y_px=offset_y_arcsec / PIXEL_SCALE_ARCSEC,
+        if not results or len(results) == 0:
+            return []
+
+        table = results[0]
+        entries = []
+        for row in table:
+            source_id = str(row['Source'])
+            if source_id == target_info["gaia_source_id"]:
+                continue
+            row_ra = float(row['RA_ICRS'])
+            row_dec = float(row['DE_ICRS'])
+            coord = SkyCoord(row_ra * u.deg, row_dec * u.deg, frame="icrs")
+            dist_arcsec = center.separation(coord).arcsec
+            offset_x_arcsec = (row_ra - ra) * 3600.0 * cos_dec
+            offset_y_arcsec = (row_dec - dec) * 3600.0
+            gmag = _safe_float(row['Gmag']) if 'Gmag' in table.colnames else None
+            entries.append(
+                build_nearby_source_entry(
+                    source_id=source_id,
+                    ra=row_ra,
+                    dec=row_dec,
+                    gmag=gmag,
+                    dist_arcsec=dist_arcsec,
+                    pixel_scale_arcsec=PIXEL_SCALE_ARCSEC,
+                    offset_x_px=offset_x_arcsec / PIXEL_SCALE_ARCSEC,
+                    offset_y_px=offset_y_arcsec / PIXEL_SCALE_ARCSEC,
+                )
             )
-        )
-    entries.sort(key=lambda item: item.get("dist_arcsec") if item.get("dist_arcsec") is not None else float("inf"))
-    return entries
+        entries.sort(key=lambda item: item.get("dist_arcsec") if item.get("dist_arcsec") is not None else float("inf"))
+        return entries
+    except Exception as err:
+        LOGGER.exception("Vizier query failed for nearby Gaia sources: %s", err)
+        return []
 
 
 def _resolve_reference_magnitude(target_info: dict, tpf_metadata: dict | None) -> dict:
@@ -284,42 +307,6 @@ def _estimate_overlay_radius_deg(shape: tuple[int, int] | list[int]) -> float:
     return round(radius_arcsec / 3600.0, 5)
 
 
-def _mark_overlay_gaia_variables(sources: list[dict]) -> None:
-    if not sources:
-        return
-    source_ids = [item.get("source_id") for item in sources if item.get("source_id")]
-    if not source_ids:
-        return
-    query = f"""
-        SELECT source_id
-        FROM gaiadr3.vari_summary
-        WHERE source_id IN ({", ".join(source_ids)})
-    """
-    try:
-        job = Gaia.launch_job(query)
-        results = job.get_results()
-        variable_ids = {str(row["source_id"]) for row in results}
-        for source in sources:
-            source_id = source.get("source_id")
-            if source_id in variable_ids:
-                catalogs_list = list(source.get("variable_catalogs") or [])
-                if "Gaia DR3" not in catalogs_list:
-                    catalogs_list.append("Gaia DR3")
-                source["is_variable"] = True
-                source["variable_type"] = "Gaia DR3"
-                source["variable_catalogs"] = catalogs_list
-            else:
-                source.setdefault("is_variable", False)
-                source.setdefault("variable_type", None)
-                source.setdefault("variable_catalogs", [])
-    except Exception:
-        LOGGER.exception("Gaia vari_summary overlay query failed.")
-        for source in sources:
-            source.setdefault("is_variable", False)
-            source.setdefault("variable_type", None)
-            source.setdefault("variable_catalogs", [])
-
-
 def _crossmatch_overlay_vsx(sources: list[dict], ra_center: float, dec_center: float, radius_deg: float) -> None:
     if not sources:
         return
@@ -383,6 +370,18 @@ def _crossmatch_overlay_vsx(sources: list[dict], ra_center: float, dec_center: f
         LOGGER.exception("VSX cross-match overlay fallito per gaia_source_id field center=(%s,%s)", ra_center, dec_center)
 
 
+def _world_to_tpf_pixel(ra: float, dec: float, wcs, shape: tuple[int, int] | list[int]) -> tuple:
+    """Convert RA/DEC to TPF cutout pixels using the cutout WCS directly."""
+    if wcs is None:
+        return None, None
+    try:
+        x, y = wcs.all_world2pix(float(ra), float(dec), 0)
+        return float(x), float(y)
+    except Exception as e:
+        LOGGER.debug("Failed to convert world to TPF pixel: %s", str(e))
+        return None, None
+
+
 def _build_target_position(target_info: dict, shape: tuple[int, int] | list[int], wcs) -> dict:
     rows = int(shape[0])
     cols = int(shape[1])
@@ -400,7 +399,10 @@ def _build_target_position(target_info: dict, shape: tuple[int, int] | list[int]
         return fallback
 
     try:
-        x, y = wcs.all_world2pix(float(target_info["ra_deg"]), float(target_info["dec_deg"]), 0)
+        x, y = _world_to_tpf_pixel(target_info["ra_deg"], target_info["dec_deg"], wcs, shape)
+        if x is None or y is None:
+            LOGGER.warning("Target conversion returned None")
+            return fallback
         if not point_is_inside_grid(x, y, shape):
             LOGGER.warning("Target world-to-pixel position fell outside TPF grid: x=%s y=%s", x, y)
             return fallback
@@ -415,74 +417,243 @@ def _build_target_position(target_info: dict, shape: tuple[int, int] | list[int]
         return fallback
 
 
-def _fetch_gaia_overlay_sources(target_info: dict, shape: tuple[int, int] | list[int], wcs) -> tuple[list[dict], str]:
+def _fetch_gaia_overlay_sources(target_info: dict, shape: tuple[int, int] | list[int], wcs) -> tuple[list[dict], str, dict]:
     if wcs is None:
-        return [], "Overlay Gaia non disponibile: WCS non disponibile."
+        return [], "Overlay Gaia non disponibile: WCS non disponibile.", {"error": "no_wcs"}
     if not _target_has_coordinates(target_info):
-        return [], "Overlay Gaia non disponibile: coordinate target assenti."
+        return [], "Overlay Gaia non disponibile: coordinate target assenti.", {"error": "no_coords"}
 
     ra = float(target_info["ra_deg"])
     dec = float(target_info["dec_deg"])
     radius_deg = _estimate_overlay_radius_deg(shape)
-    query = f"""
-        SELECT TOP {MAX_OVERLAY_SOURCES + 1} source_id, ra, dec, phot_g_mean_mag AS gmag
-        FROM gaiadr3.gaia_source
-        WHERE 1 = CONTAINS(
-            POINT('ICRS', gaiadr3.gaia_source.ra, gaiadr3.gaia_source.dec),
-            CIRCLE('ICRS', {ra}, {dec}, {radius_deg})
-        )
-    """
+    gaia_source_id = target_info.get("gaia_source_id", "unknown")
+
     try:
-        LOGGER.info("Querying Gaia overlay sources within radius_deg=%s", radius_deg)
-        job = Gaia.launch_job_async(query)
-        results = job.get_results()
+        rows = int(shape[0])
+        cols = int(shape[1])
+        center_x = (cols - 1) / 2.0
+        center_y = (rows - 1) / 2.0
+        query_ra, query_dec = wcs.all_pix2world(center_x, center_y, 0)
+        query_ra = float(query_ra)
+        query_dec = float(query_dec)
+
+        LOGGER.info(
+            "Querying Vizier Gaia overlay sources for gaia_source_id=%s center_ra=%.6f center_dec=%.6f radius_deg=%.6f",
+            gaia_source_id,
+            query_ra,
+            query_dec,
+            radius_deg,
+        )
+        LOGGER.info("=== DEBUG: TPF CENTER COORDINATES ===")
+        LOGGER.info("TPF WCS center RA=%.6f DEC=%.6f", query_ra, query_dec)
+
+        vizier = Vizier(columns=['Source', 'RA_ICRS', 'DE_ICRS', 'Gmag', 'Var'], row_limit=-1)
+        results = vizier.query_region(
+            SkyCoord(ra=query_ra * u.deg, dec=query_dec * u.deg, frame="icrs"),
+            radius=radius_deg * u.deg,
+            catalog='I/350'  # Gaia DR3
+        )
         sources = []
         target_coord = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame="icrs")
-        for row in results:
-            source_id = str(row["source_id"])
+
+        accepted_count = 0
+        rejected_count = 0
+        rejected_samples = []
+        accepted_samples = []
+        target_x, target_y = _world_to_tpf_pixel(ra, dec, wcs, shape)
+
+        def build_debug_sample(
+            source_id,
+            x,
+            y,
+            row_ra,
+            row_dec,
+            gmag,
+            dist_arcsec,
+            is_variable,
+            variable_type,
+            variable_catalogs,
+        ) -> dict:
+            dist_target_px = None
+            if target_x is not None and target_y is not None:
+                dist_target_px = math.hypot(float(x) - float(target_x), float(y) - float(target_y))
+            return {
+                "id": source_id,
+                "x": rounded_or_none(x, 3),
+                "y": rounded_or_none(y, 3),
+                "ra_deg": rounded_or_none(row_ra, 6),
+                "dec_deg": rounded_or_none(row_dec, 6),
+                "gmag": rounded_or_none(gmag, 4),
+                "dist_target_arcsec": rounded_or_none(dist_arcsec, 3),
+                "dist_target_px": rounded_or_none(dist_target_px, 3),
+                "is_variable": bool(is_variable),
+                "variable_type": variable_type,
+                "variable_catalogs": list(variable_catalogs or []),
+            }
+
+        if results and len(results) > 0:
+            table = results[0]
+            LOGGER.info("=== VIZIER QUERY RESULT ===")
+            LOGGER.info("Vizier returned %d TOTAL sources (before filter), gaia_source_id=%s", len(table), gaia_source_id)
+            LOGGER.info("Grid shape for filtering: %s", shape)
+        else:
+            LOGGER.info("Vizier query returned 0 sources for gaia_source_id=%s", gaia_source_id)
+            return [], "Sorgenti Gaia overlay non disponibili: nessun risultato dalla query.", {"total_vizier": 0, "accepted": 0, "rejected": 0}
+
+        for row in table:
+            source_id = str(row['Source'])
             if source_id == target_info["gaia_source_id"]:
                 continue
-            row_ra = float(row["ra"])
-            row_dec = float(row["dec"])
+            row_ra = float(row['RA_ICRS'])
+            row_dec = float(row['DE_ICRS'])
             row_coord = SkyCoord(ra=row_ra * u.deg, dec=row_dec * u.deg, frame="icrs")
             dist_arcsec = float(target_coord.separation(row_coord).arcsec)
-            x, y = wcs.all_world2pix(row_ra, row_dec, 0)
-            if not point_is_inside_grid(x, y, shape):
+            x, y = _world_to_tpf_pixel(row_ra, row_dec, wcs, shape)
+            if x is None or y is None:
+                rejected_count += 1
+                LOGGER.debug("Vizier Gaia source %s: world-to-pixel conversion failed", source_id)
                 continue
+            gmag = _safe_float(row['Gmag']) if 'Gmag' in table.colnames else None
+            # Controlla variabilità Gaia (photvariableflag)
+            is_variable_gaia = row.get('Var') == 'VARIABLE' if 'Var' in row.colnames else False
+            variable_catalogs = ['Gaia DR3'] if is_variable_gaia else []
+            variable_type = 'Gaia DR3' if is_variable_gaia else None
+            LOGGER.debug("Vizier Gaia source %s: ra=%.6f dec=%.6f → pixel x=%.3f y=%.3f for gaia_source_id=%s", source_id, row_ra, row_dec, x, y, gaia_source_id)
+            if not point_is_inside_grid(x, y, shape):
+                rejected_count += 1
+                if len(rejected_samples) < 10:
+                    rejected_samples.append(build_debug_sample(
+                        source_id,
+                        x,
+                        y,
+                        row_ra,
+                        row_dec,
+                        gmag,
+                        dist_arcsec,
+                        is_variable_gaia,
+                        variable_type,
+                        variable_catalogs,
+                    ))
+                LOGGER.info("REJECTED: Source %s at pixel (%.3f, %.3f) is outside grid shape=%s", source_id, x, y, shape)
+                continue
+            accepted_count += 1
+            if len(accepted_samples) < 5:
+                accepted_samples.append(build_debug_sample(
+                    source_id,
+                    x,
+                    y,
+                    row_ra,
+                    row_dec,
+                    gmag,
+                    dist_arcsec,
+                    is_variable_gaia,
+                    variable_type,
+                    variable_catalogs,
+                ))
+            LOGGER.info("ACCEPTED: Source %s at pixel (%.3f, %.3f) RA=%.6f DEC=%.6f", source_id, x, y, row_ra, row_dec)
             sources.append(
                 build_overlay_source_entry(
                     source_id,
                     x,
                     y,
-                    row["gmag"],
+                    gmag,
                     row_ra,
                     row_dec,
                     dist_arcsec=dist_arcsec,
-                    is_variable=False,
-                    variable_type=None,
-                    variable_catalogs=[],
+                    is_variable=is_variable_gaia,
+                    variable_type=variable_type,
+                    variable_catalogs=variable_catalogs,
                 )
             )
-        _mark_overlay_gaia_variables(sources)
+        LOGGER.info("=== FILTER RESULT ===")
+        LOGGER.info("Total Vizier sources: %d | Accepted: %d | Rejected: %d", len(table), accepted_count, rejected_count)
+
+        # Log campioni
+        if rejected_samples:
+            LOGGER.info("=== CAMPIONE RIFIUTATE (primi 10) ===")
+            for sample in rejected_samples[:10]:
+                LOGGER.info("  ID %s: x=%.3f, y=%.3f", sample["id"], sample["x"], sample["y"])
+        if accepted_samples:  # accepted
+            LOGGER.info("=== CAMPIONE ACCETTATE (prime 5) ===")
+            for sample in accepted_samples[:5]:
+                LOGGER.info("  ID %s: x=%.3f, y=%.3f", sample["id"], sample["x"], sample["y"])
+
         _crossmatch_overlay_vsx(sources, ra, dec, radius_deg)
-        sources.sort(key=lambda item: item.get("gmag") if item.get("gmag") is not None else float("inf"))
+        sources.sort(
+            key=lambda item: (
+                item.get("dist_arcsec") if item.get("dist_arcsec") is not None else float("inf"),
+                item.get("gmag") if item.get("gmag") is not None else float("inf"),
+            )
+        )
         variable_count = sum(1 for item in sources if item.get("is_variable"))
-        return sources, f"Sorgenti Gaia overlay disponibili: {len(sources)} nel campo TPF, variabili note: {variable_count}."
-    except Exception:
-        LOGGER.exception("Gaia overlay query failed for gaia_source_id=%s", target_info["gaia_source_id"])
-        return [], "Overlay Gaia non disponibile: query Gaia fallita."
+
+        debug_stats = {
+            "total_vizier": len(table),
+            "accepted": accepted_count,
+            "rejected": rejected_count,
+            "radius_deg": radius_deg,
+            "center_ra": query_ra,
+            "center_dec": query_dec,
+            "target_ra": ra,
+            "target_dec": dec,
+            "query_center_pixel": [round(center_x, 3), round(center_y, 3)],
+            "returned_to_frontend": len(sources),
+            "selection_order": "all_inside_grid_sorted_by_target_distance_then_gmag",
+            "accepted_samples": accepted_samples,
+            "rejected_samples": rejected_samples,
+        }
+
+        return sources, f"Sorgenti Gaia overlay disponibili: {len(sources)} nel campo TPF, variabili note: {variable_count}.", debug_stats
+    except Exception as e:
+        LOGGER.exception("Gaia overlay query failed for gaia_source_id=%s: %s", target_info.get("gaia_source_id", "unknown"), str(e))
+        return [], f"Overlay Gaia non disponibile: {str(e)}", {"error": str(e)}
 
 
 def _build_real_tpf_overlay(target_info: dict, tpf_payload: dict, wcs) -> dict:
     shape = tuple(tpf_payload.get("shape") or (0, 0))
+    gaia_source_id = target_info.get("gaia_source_id", "unknown")
+
+    # Log WCS properties for debugging
+    if wcs:
+        try:
+            wcs_shape = f"has_celestial={wcs.has_celestial}, pixel_shape={wcs.pixel_shape}"
+            LOGGER.info("Building overlay for gaia_source_id=%s with WCS: %s, TPF shape=%s", gaia_source_id, wcs_shape, shape)
+        except Exception:
+            LOGGER.info("Building overlay for gaia_source_id=%s with WCS (unable to log properties), TPF shape=%s", gaia_source_id, shape)
+    else:
+        LOGGER.warning("Building overlay for gaia_source_id=%s with no WCS", gaia_source_id)
+
     target_position = _build_target_position(target_info, shape, wcs)
-    gaia_sources, overlay_message = _fetch_gaia_overlay_sources(target_info, shape, wcs)
+    gaia_sources, overlay_message, debug_stats = _fetch_gaia_overlay_sources(target_info, shape, wcs)
+    metadata = tpf_payload.get("metadata") if isinstance(tpf_payload.get("metadata"), dict) else {}
+    debug_stats["wcs_source"] = metadata.get("wcs_source")
+    debug_stats["wcs_warning"] = metadata.get("wcs_warning")
+    debug_stats["flux_shape"] = metadata.get("flux_shape")
+    debug_stats["target_pixel_x"] = target_position.get("x")
+    debug_stats["target_pixel_y"] = target_position.get("y")
+    debug_stats["target_pixel_source"] = target_position.get("source")
+    if point_is_inside_grid(target_position.get("x"), target_position.get("y"), shape):
+        rows = int(shape[0])
+        cols = int(shape[1])
+        edge_margin = min(
+            float(target_position["x"]) + 0.5,
+            float(target_position["y"]) + 0.5,
+            (cols - 0.5) - float(target_position["x"]),
+            (rows - 0.5) - float(target_position["y"]),
+        )
+        if edge_margin < 1.0:
+            debug_stats["target_edge_warning"] = "Target Gaia entro 1 pixel dal bordo del TPF."
+
+    LOGGER.info("Overlay build complete for gaia_source_id=%s: target_position=%s, gaia_sources_count=%d",
+                gaia_source_id, target_position.get("source"), len(gaia_sources))
+
     return {
         "status": "ok",
         "message": overlay_message,
         "target_position": target_position,
         "gaia_sources": gaia_sources,
         "variable_sources_count": sum(1 for item in gaia_sources if item.get("is_variable")),
+        "debug_stats": debug_stats,
     }
 
 
@@ -569,15 +740,16 @@ def _build_tpf_preview(target_info: dict, sector: int, nearby_sources: list[dict
     }
 
 
-def run_tpf_pipeline(gaia_source_id: str, sector, masks: dict | None = None) -> dict:
+def run_tpf_pipeline(gaia_source_id: str, sector, masks: dict | None = None, skip_target_info: bool = False) -> dict:
     normalized_gaia_source_id = validate_gaia_source_id(gaia_source_id)
     normalized_sector = validate_sector(sector)
     pipeline_started_at = perf_counter()
     LOGGER.info(
-        "Starting TPF pipeline for gaia_source_id=%s sector=%s manual_masks=%s",
+        "Starting TPF pipeline for gaia_source_id=%s sector=%s manual_masks=%s skip_target_info=%s",
         normalized_gaia_source_id,
         normalized_sector,
         bool(masks),
+        skip_target_info,
     )
     try:
         load_tpf_started_at = perf_counter()
@@ -590,7 +762,27 @@ def run_tpf_pipeline(gaia_source_id: str, sector, masks: dict | None = None) -> 
             bool(real_tpf),
         )
         target_fetch_started_at = perf_counter()
-        target_info, gaia_status = _resolve_target_info_with_fallback(normalized_gaia_source_id, real_tpf=real_tpf)
+        if real_tpf is not None and skip_target_info:
+            target_info = {
+                "gaia_source_id": normalized_gaia_source_id,
+                "ra_deg": None,
+                "dec_deg": None,
+                "gmag": None,
+            }
+            gaia_status = {
+                "available": False,
+                "mode": "skipped",
+                "message": "Metadata risolto asincrono.",
+            }
+            LOGGER.info(
+                "TPF timing | gaia_source_id=%s sector=%s step=fetch_target elapsed_s=%.3f gaia_available=%s",
+                normalized_gaia_source_id,
+                normalized_sector,
+                perf_counter() - target_fetch_started_at,
+                False,
+            )
+        else:
+            target_info, gaia_status = _resolve_target_info_with_fallback(normalized_gaia_source_id, real_tpf=real_tpf)
         LOGGER.info(
             "TPF timing | gaia_source_id=%s sector=%s step=fetch_target elapsed_s=%.3f gaia_available=%s",
             normalized_gaia_source_id,
@@ -604,8 +796,16 @@ def run_tpf_pipeline(gaia_source_id: str, sector, masks: dict | None = None) -> 
             raw_flux_cube = real_tpf.pop("_flux_cube", None)
             tpf_wcs = real_tpf.pop("_wcs", None)
             tpf_payload = real_tpf
+
             reference_mag_started_at = perf_counter()
-            tpf_payload["metadata"] = _resolve_reference_magnitude(target_info, tpf_payload.get("metadata"))
+            if target_info.get("ra_deg") is not None:
+                tpf_payload["metadata"] = _resolve_reference_magnitude(target_info, tpf_payload.get("metadata"))
+            else:
+                tpf_payload["metadata"] = tpf_payload.get("metadata") or {}
+                tpf_payload["metadata"]["reference_mag_value"] = None
+                tpf_payload["metadata"]["reference_mag_band"] = None
+                tpf_payload["metadata"]["reference_mag_key"] = None
+                tpf_payload["metadata"]["reference_mag_source"] = None
             tpf_payload["metadata"]["gaia_status"] = gaia_status
             LOGGER.info(
                 "TPF timing | gaia_source_id=%s sector=%s step=resolve_reference_magnitude elapsed_s=%.3f reference_band=%s reference_source=%s",
@@ -616,7 +816,10 @@ def run_tpf_pipeline(gaia_source_id: str, sector, masks: dict | None = None) -> 
                 tpf_payload["metadata"].get("reference_mag_source"),
             )
             overlay_started_at = perf_counter()
-            tpf_payload["overlay"] = _build_real_tpf_overlay(target_info, tpf_payload, tpf_wcs)
+            if target_info.get("ra_deg") is not None:
+                tpf_payload["overlay"] = _build_real_tpf_overlay(target_info, tpf_payload, tpf_wcs)
+            else:
+                tpf_payload["overlay"] = {"gaia_sources": [], "message": "Overlay caricato asincrono."}
             LOGGER.info(
                 "TPF timing | gaia_source_id=%s sector=%s step=build_overlay elapsed_s=%.3f sources=%s",
                 normalized_gaia_source_id,
@@ -723,6 +926,27 @@ def run_tpf_pipeline(gaia_source_id: str, sector, masks: dict | None = None) -> 
                     target_info,
                     "Light curve reale non disponibile: dati temporali o cubo FLUX assenti.",
                 )
+
+            # Aggiungi confronto CRVAL vs target_info al debug panel
+            if tpf_wcs is not None and target_info.get("ra_deg") is not None:
+                try:
+                    crval1 = float(tpf_wcs.wcs.crval[0])
+                    crval2 = float(tpf_wcs.wcs.crval[1])
+                    target_ra = float(target_info["ra_deg"])
+                    target_dec = float(target_info["dec_deg"])
+                    # Assicura che metadata e wcs_debug esistano
+                    if "metadata" not in tpf_payload:
+                        tpf_payload["metadata"] = {}
+                    if "wcs_debug" not in tpf_payload["metadata"]:
+                        tpf_payload["metadata"]["wcs_debug"] = {}
+                    tpf_payload["metadata"]["wcs_debug"]["crval_vs_target"] = {
+                        "wcs_crval": [round(crval1, 5), round(crval2, 5)],
+                        "target_info": [round(target_ra, 5), round(target_dec, 5)],
+                        "delta_ra_arcsec": round((crval1 - target_ra) * 3600, 2),
+                        "delta_dec_arcsec": round((crval2 - target_dec) * 3600, 2),
+                    }
+                except Exception as e:
+                    LOGGER.debug("Failed to add CRVAL alignment diagnostic: %s", str(e))
         else:
             LOGGER.info("Falling back to synthetic TPF preview for gaia_source_id=%s sector=%s", normalized_gaia_source_id, normalized_sector)
             nearby_sources = _fetch_nearby_gaia_sources(target_info)

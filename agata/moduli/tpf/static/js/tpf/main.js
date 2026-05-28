@@ -1,5 +1,8 @@
 (function () {
     const appRoot = document.getElementById("tpfApp");
+    console.log("DEBUG: appRoot element found?", !!appRoot);
+    if (appRoot) console.log("DEBUG: appRoot.dataset.mastLocalSectorsUrl =", appRoot.dataset.mastLocalSectorsUrl);
+
     const gaiaSourceIdInput = document.getElementById("gaiaSourceIdInput");
     const saveButton = document.getElementById("saveButton");
     const promoteButton = document.getElementById("promoteButton");
@@ -97,6 +100,7 @@
         saveUrl: appRoot.dataset.saveUrl || "/tpf/api/save",
         promoteUrl: appRoot.dataset.promoteUrl || "/tpf/api/promote",
     };
+    console.log("DEBUG: endpointUrls.mastLocalSectorsUrl =", endpointUrls.mastLocalSectorsUrl);
 
     const pageContext = {
         mode: appRoot.dataset.mode || "standalone",
@@ -889,7 +893,11 @@
         }
         if (overlay && Array.isArray(overlay.gaia_sources)) {
             for (const item of overlay.gaia_sources) {
-                const gmag = Number(item && item.gmag);
+                const rawGmag = item && item.gmag;
+                if (rawGmag === null || rawGmag === undefined || rawGmag === "") {
+                    continue;
+                }
+                const gmag = Number(rawGmag);
                 if (Number.isFinite(gmag)) {
                     allMagnitudes.push(gmag);
                 }
@@ -908,7 +916,9 @@
             return;
         }
         const magnitudes = overlay.gaia_sources
-            .map((item) => Number(item && item.gmag))
+            .map((item) => item && item.gmag)
+            .filter((value) => value !== null && value !== undefined && value !== "")
+            .map((value) => Number(value))
             .filter((value) => Number.isFinite(value));
         if (!magnitudes.length) {
             return;
@@ -920,6 +930,9 @@
     }
 
     function getMagnitudeScaledMarkerSize(gmag, bounds, fallbackSize, minSize, maxSize) {
+        if (gmag === null || gmag === undefined || gmag === "") {
+            return fallbackSize;
+        }
         const numericGmag = Number(gmag);
         if (!Number.isFinite(numericGmag) || !bounds) {
             return fallbackSize;
@@ -1005,7 +1018,11 @@
         const maxVisibleMag = Number(gaiaSizeMaxMagInput.value);
         const visibleSources = Number.isFinite(maxVisibleMag)
             ? overlay.gaia_sources.filter((item) => {
-                const gmag = Number(item && item.gmag);
+                const rawGmag = item && item.gmag;
+                if (rawGmag === null || rawGmag === undefined || rawGmag === "") {
+                    return true;
+                }
+                const gmag = Number(rawGmag);
                 return !Number.isFinite(gmag) || gmag <= maxVisibleMag;
             })
             : overlay.gaia_sources;
@@ -1522,8 +1539,158 @@
         }
     }
 
+    function renderDebugInfo(data) {
+        const debugContent = document.getElementById("debugContent");
+        if (!debugContent) return;
+
+        if (!data || !data.tpf) {
+            debugContent.innerHTML = '<p style="color: #666;">Nessuna info di debug disponibile.</p>';
+            return;
+        }
+
+        const debug = data.tpf.metadata ? data.tpf.metadata.wcs_debug : null;
+        const overlayDebug = data.tpf.overlay ? data.tpf.overlay.debug_stats : null;
+        let html = '<div style="line-height: 1.6;">';
+
+        // FITS Header
+        if (debug) {
+            html += '<div style="margin-bottom: 1.5rem;">';
+            html += '<strong>[FITS Header Keywords]</strong><br>';
+            if (debug.fits_header && Object.keys(debug.fits_header).length > 0) {
+                for (const [key, value] of Object.entries(debug.fits_header)) {
+                    html += `<div>&nbsp;&nbsp;${key} = ${value}</div>`;
+                }
+            } else {
+                html += '<div style="color: #999;">Nessun keyword disponibile</div>';
+            }
+            html += '</div>';
+
+            // Shape Calculated
+            html += '<div style="margin-bottom: 1.5rem;">';
+            html += '<strong>[Shape Calcolato]</strong><br>';
+            if (debug.shape_calculated && Array.isArray(debug.shape_calculated)) {
+                html += `<div>&nbsp;&nbsp;shape = [${debug.shape_calculated[0]}, ${debug.shape_calculated[1]}]</div>`;
+                html += `<div style="color: #666;">&nbsp;&nbsp;(rows=${debug.shape_calculated[0]}, cols=${debug.shape_calculated[1]})</div>`;
+            } else {
+                html += '<div style="color: #999;">Shape non disponibile</div>';
+            }
+            html += '</div>';
+
+            // WCS Info
+            html += '<div style="margin-bottom: 1.5rem;">';
+            html += '<strong>[WCS Info]</strong><br>';
+            if (debug.wcs_info && Object.keys(debug.wcs_info).length > 0) {
+                for (const [key, value] of Object.entries(debug.wcs_info)) {
+                    let displayValue = value;
+                    if (Array.isArray(value)) {
+                        displayValue = `[${value.join(", ")}]`;
+                    }
+                    html += `<div>&nbsp;&nbsp;${key} = ${displayValue}</div>`;
+                }
+            } else {
+                html += '<div style="color: #999;">WCS non disponibile</div>';
+            }
+            html += '</div>';
+
+            // Test Conversion
+            html += '<div style="margin-bottom: 1.5rem;">';
+            html += '<strong>[Test Conversione WCS (Centro Griglia)]</strong><br>';
+            if (debug.test_conversion) {
+                if (debug.test_conversion.error) {
+                    html += `<div style="color: #c33;">Errore: ${debug.test_conversion.error}</div>`;
+                } else if (debug.test_conversion.pixel_input && debug.test_conversion.world_output) {
+                    const [px, py] = debug.test_conversion.pixel_input;
+                    const [ra, dec] = debug.test_conversion.world_output;
+                    html += `<div>&nbsp;&nbsp;Input Pixel: [${px.toFixed(1)}, ${py.toFixed(1)}]</div>`;
+                    html += `<div>&nbsp;&nbsp;Output World: RA=${ra}, DEC=${dec}</div>`;
+                    html += `<div style="color: #666;">&nbsp;&nbsp;${debug.test_conversion.description}</div>`;
+                }
+            } else {
+                html += '<div style="color: #999;">Test conversion non disponibile</div>';
+            }
+            html += '</div>';
+
+            // CRVAL vs Target Info Alignment Check
+            if (debug.crval_vs_target) {
+                const alignment = debug.crval_vs_target;
+                const [crval_ra, crval_dec] = alignment.wcs_crval;
+                const [target_ra, target_dec] = alignment.target_info;
+                const delta_ra = alignment.delta_ra_arcsec;
+                const delta_dec = alignment.delta_dec_arcsec;
+                const delta_total = Math.sqrt(delta_ra * delta_ra + delta_dec * delta_dec);
+                const isAligned = delta_total < 5; // 5 arcsec è OK per TPF
+                const statusColor = isAligned ? '#0066cc' : '#c33';
+                const statusIcon = isAligned ? '✓' : '⚠';
+
+                html += '<div style="margin-bottom: 1.5rem; padding: 0.8rem; background: #fff9e6; border-left: 3px solid ' + statusColor + ';">';
+                html += '<strong>[CRVAL (WCS) vs Target Info Alignment] ' + statusIcon + '</strong><br>';
+                html += `<div>&nbsp;&nbsp;WCS CRVAL: RA=${crval_ra}, DEC=${crval_dec}</div>`;
+                html += `<div>&nbsp;&nbsp;Target Info: RA=${target_ra}, DEC=${target_dec}</div>`;
+                html += `<div style="color: ${statusColor}; font-weight: bold;">&nbsp;&nbsp;Δ RA=${delta_ra} arcsec, Δ DEC=${delta_dec} arcsec (totale ${delta_total.toFixed(1)} arcsec)</div>`;
+                if (!isAligned) {
+                    html += `<div style="color: #c33; margin-top: 0.5rem;">⚠ ATTENZIONE: WCS non allineato al target! Centro griglia != target coordinato.</div>`;
+                }
+                html += '</div>';
+            }
+        }
+
+        // Gaia Overlay Debug Stats
+        if (overlayDebug) {
+            html += '<div style="margin-bottom: 1.5rem; padding: 0.8rem; background: #fafafa; border-left: 3px solid #0066cc;">';
+            html += '<strong>[Query Gaia Overlay]</strong><br>';
+            if (overlayDebug.error) {
+                html += `<div style="color: #c33;">Errore: ${overlayDebug.error}</div>`;
+            } else {
+                html += `<div>&nbsp;&nbsp;Raggio query: ${overlayDebug.radius_deg ? overlayDebug.radius_deg.toFixed(3) : 'N/A'} deg</div>`;
+                html += `<div>&nbsp;&nbsp;Centro: RA=${overlayDebug.center_ra ? overlayDebug.center_ra.toFixed(5) : 'N/A'}, DEC=${overlayDebug.center_dec ? overlayDebug.center_dec.toFixed(5) : 'N/A'}</div>`;
+                html += `<div style="margin-top: 0.5rem; font-weight: bold;">Risultati filtro:</div>`;
+                html += `<div style="color: #0066cc;">&nbsp;&nbsp;✓ Accettate: ${overlayDebug.accepted}</div>`;
+                html += `<div style="color: #c33;">&nbsp;&nbsp;✗ Rifiutate: ${overlayDebug.rejected}</div>`;
+                html += `<div style="color: #666;">&nbsp;&nbsp;⊙ Totale Vizier: ${overlayDebug.total_vizier}</div>`;
+
+                if (overlayDebug.returned_to_frontend !== undefined) {
+                    html += `<div style="color: #666;">&nbsp;&nbsp;Restituite al viewer: ${overlayDebug.returned_to_frontend}</div>`;
+                }
+                if (overlayDebug.selection_order) {
+                    html += `<div style="color: #666;">&nbsp;&nbsp;Ordine: ${overlayDebug.selection_order}</div>`;
+                }
+
+                function formatOverlayDebugSample(src) {
+                    const variableText = src.is_variable
+                        ? `variabile=si${src.variable_type ? ` (${src.variable_type})` : ""}`
+                        : "variabile=no";
+                    const catalogs = Array.isArray(src.variable_catalogs) && src.variable_catalogs.length
+                        ? ` | cat=${src.variable_catalogs.join(",")}`
+                        : "";
+                    return `ID ${src.id}: x=${src.x}, y=${src.y}, ra=${src.ra_deg}, dec=${src.dec_deg}, G=${src.gmag}, dist=${src.dist_target_arcsec}" / ${src.dist_target_px}px, ${variableText}${catalogs}`;
+                }
+
+                // Campioni accettati
+                if (overlayDebug.accepted_samples && overlayDebug.accepted_samples.length > 0) {
+                    html += `<div style="margin-top: 0.8rem; font-weight: bold; color: #0066cc;">Campione accettate (pixel):</div>`;
+                    for (const src of overlayDebug.accepted_samples) {
+                        html += `<div style="color: #0066cc; margin-left: 1rem; font-family: monospace;">${formatOverlayDebugSample(src)}</div>`;
+                    }
+                }
+
+                // Campioni rifiutati
+                if (overlayDebug.rejected_samples && overlayDebug.rejected_samples.length > 0) {
+                    html += `<div style="margin-top: 0.8rem; font-weight: bold; color: #c33;">Campione rifiutate (pixel):</div>`;
+                    for (const src of overlayDebug.rejected_samples) {
+                        html += `<div style="color: #c33; margin-left: 1rem; font-family: monospace;">${formatOverlayDebugSample(src)}</div>`;
+                    }
+                }
+            }
+            html += '</div>';
+        }
+
+        html += '</div>';
+        debugContent.innerHTML = html;
+    }
+
     function updateSections(data) {
         renderTarget(data.target || null);
+        renderDebugInfo(data);
         if (data.tpf && data.tpf.available && (Array.isArray(data.tpf.flux_grid) || (data.tpf.frames && data.tpf.frames.available))) {
             renderCurrentTpfState();
         } else {
@@ -1620,8 +1787,51 @@
         returnPayloadBox.textContent = JSON.stringify(buildAgataReturnPayload(result, pageContext), null, 2);
     }
 
+    async function pollJobStatus(jobId, onProgress, timeout = 120000) {
+        return new Promise((resolve, reject) => {
+            const startTime = Date.now();
+            const interval = setInterval(async () => {
+                const elapsed = Date.now() - startTime;
+                if (elapsed > timeout) {
+                    clearInterval(interval);
+                    reject(new Error("Job timeout dopo " + Math.round(timeout / 1000) + " sec"));
+                    return;
+                }
+
+                try {
+                    const statusResp = await fetch(`/agata/tpf/api/job/${jobId}/status`);
+                    if (!statusResp.ok) {
+                        clearInterval(interval);
+                        reject(new Error("Errore polling status: HTTP " + statusResp.status));
+                        return;
+                    }
+                    const statusData = await statusResp.json();
+
+                    if (statusData.job_status === "running") {
+                        if (onProgress) onProgress(statusData.progress);
+                    } else if (statusData.job_status === "completed") {
+                        clearInterval(interval);
+                        const resultResp = await fetch(`/agata/tpf/api/job/${jobId}/result`);
+                        if (!resultResp.ok) {
+                            reject(new Error("Errore lettura result: HTTP " + resultResp.status));
+                            return;
+                        }
+                        const result = await resultResp.json();
+                        resolve(result);
+                    } else if (statusData.job_status === "failed") {
+                        clearInterval(interval);
+                        reject(new Error(statusData.error || "Job fallito"));
+                    }
+                } catch (error) {
+                    clearInterval(interval);
+                    reject(error);
+                }
+            }, 1500);
+        });
+    }
+
     async function fetchMastSectors(gaiaId, cutoutSize) {
-        const response = await fetch(endpointUrls.mastSectorsUrl, {
+        const startResp = await fetch(endpointUrls.mastSectorsUrl, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -1631,9 +1841,30 @@
                 cutout_size: cutoutSize,
             }),
         });
-        const data = await parseApiJsonResponse(response, "Risposta JSON non valida durante la ricerca settori MAST");
-        output.textContent = JSON.stringify(data, null, 2);
-        return { response, data };
+
+        if (startResp.status !== 202) {
+            const data = await parseApiJsonResponse(startResp, "Errore avvio job query settori MAST");
+            output.textContent = JSON.stringify(data, null, 2);
+            return { response: startResp, data };
+        }
+
+        const startData = await startResp.json();
+        const jobId = startData.job_id;
+
+        try {
+            const result = await pollJobStatus(jobId, (progress) => {
+                setMastStatus(
+                    `${progress.message || ""}${progress.percent ? ` (${progress.percent}%)` : ""}`,
+                    "warning"
+                );
+            });
+            output.textContent = JSON.stringify(result, null, 2);
+            return { response: startResp, data: result };
+        } catch (error) {
+            const errorData = { status: "error", message: error.message };
+            output.textContent = JSON.stringify(errorData, null, 2);
+            throw error;
+        }
     }
 
     async function fetchLocalMastSectors(gaiaId, cutoutSize) {
@@ -1804,6 +2035,55 @@
         }
     }
 
+    async function pollMetadataJob(jobId, onComplete, timeout = 60000) {
+        const startTime = Date.now();
+        const interval = setInterval(async () => {
+            const elapsed = Date.now() - startTime;
+            if (elapsed > timeout) {
+                clearInterval(interval);
+                setStatus("Timeout risoluzione metadata (continuando con dati parziali).", "status-warning");
+                return;
+            }
+
+            try {
+                const statusResp = await fetch(`/agata/tpf/api/job/${jobId}/status`);
+                if (!statusResp.ok) {
+                    return;
+                }
+                const statusData = await statusResp.json();
+
+                if (statusData.job_status === "running") {
+                    const progress = statusData.progress || {};
+                    const msg = progress.message || "Risoluzione metadata in corso...";
+                    const percent = progress.percent ? ` (${progress.percent}%)` : "";
+                    setStatus(msg + percent, "status-neutral");
+                } else if (statusData.job_status === "completed") {
+                    clearInterval(interval);
+                    try {
+                        const resultResp = await fetch(`/agata/tpf/api/job/${jobId}/result`);
+                        if (!resultResp.ok) {
+                            setStatus("Metadata completato con errore di lettura.", "status-warning");
+                            return;
+                        }
+                        const result = await resultResp.json();
+                        if (result.metadata) {
+                            onComplete(result);
+                            setStatus("Informazioni stelle aggiornate.", "status-success");
+                        }
+                    } catch (error) {
+                        const message = error instanceof Error ? error.message : String(error);
+                        setStatus(`Errore durante lettura metadata: ${message}`, "status-warning");
+                    }
+                } else if (statusData.job_status === "failed") {
+                    clearInterval(interval);
+                    setStatus(`Metadata job fallito: ${statusData.error || "Errore sconosciuto"}`, "status-warning");
+                }
+            } catch (error) {
+                // Silent failure, keep trying until timeout
+            }
+        }, 1500);
+    }
+
     async function startPipelineRun(gaiaSourceId, sector) {
         pageContext.gaia_source_id = gaiaSourceId;
         pageContext.sector = sector;
@@ -1842,6 +2122,35 @@
                 return false;
             }
             await handlePipelineSuccess(data, null);
+
+            // If metadata job is running, start polling for metadata updates
+            if (data.metadata_job_id) {
+                pollMetadataJob(data.metadata_job_id, (result) => {
+                    // Update metadata in lastRunResult
+                    if (lastRunResult && lastRunResult.tpf) {
+                        if (result.metadata) {
+                            // Merge metadata instead of overwriting (preserve camera, ccd, etc.)
+                            lastRunResult.tpf.metadata = {
+                                ...lastRunResult.tpf.metadata,
+                                ...result.metadata,
+                            };
+                        }
+                        if (result.overlay) {
+                            lastRunResult.tpf.overlay = result.overlay;
+                        }
+                        if (result.target_info) {
+                            // Update target at root level for renderTarget to find it
+                            lastRunResult.target = result.target_info;
+                            lastRunResult.tpf.target_info = result.target_info;
+                        }
+                        // Re-render with updated data
+                        renderReturnPayloadPreview(lastRunResult);
+                        updateSections(lastRunResult);
+                        renderCurrentTpfState();
+                    }
+                });
+            }
+
             return true;
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -2228,6 +2537,10 @@
         setButtonBusy(recalcButton, "Ricalcolo...", true);
         setStatus("Ricalcolo light curve in corso...", "status-neutral");
         try {
+            // Preserva overlay e target precedenti in caso di ricalcolo
+            const previousOverlay = lastRunResult && lastRunResult.tpf ? lastRunResult.tpf.overlay : null;
+            const previousTarget = lastRunResult ? lastRunResult.target : null;
+
             const masksPayload = {
                 target: cloneMask(targetMask),
                 background: cloneMask(backgroundMask),
@@ -2241,6 +2554,26 @@
                 return;
             }
             await handlePipelineSuccess(data, "Light curve aggiornata.");
+
+            // Se il nuovo target/overlay è incompleto ma c'è metadata_job_id, preserva i precedenti
+            if (data.metadata_job_id && lastRunResult) {
+                // Preserva overlay se vuoto e abbiamo overlay precedente
+                if (lastRunResult.tpf &&
+                    (!lastRunResult.tpf.overlay || !Array.isArray(lastRunResult.tpf.overlay.gaia_sources) || lastRunResult.tpf.overlay.gaia_sources.length === 0) &&
+                    previousOverlay && Array.isArray(previousOverlay.gaia_sources) && previousOverlay.gaia_sources.length > 0) {
+                    lastRunResult.tpf.overlay = previousOverlay;
+                }
+                // Preserva target se incompleto e abbiamo target precedente
+                if ((!lastRunResult.target || !lastRunResult.target.ra_deg) &&
+                    previousTarget && previousTarget.ra_deg) {
+                    lastRunResult.target = previousTarget;
+                    if (lastRunResult.tpf) {
+                        lastRunResult.tpf.target_info = previousTarget;
+                    }
+                }
+                renderCurrentTpfState();
+                updateSections(lastRunResult);
+            }
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             setStatus("Errore di rete durante il ricalcolo.", "status-error");
@@ -2475,10 +2808,23 @@
     renderSavedSessions(null);
     renderReturnPayloadPreview(null);
     refreshSavedSessions(pageContext.gaia_source_id, null);
+    console.log("=== TPF Initialization ===");
+    console.log("pageContext:", pageContext);
+    console.log("overview_mode:", pageContext.overview_mode);
+    console.log("gaia_source_id:", pageContext.gaia_source_id);
+    console.log("sector:", pageContext.sector);
+
     if (pageContext.overview_mode && pageContext.gaia_source_id) {
+        console.log("Branch 1: Overview mode with gaia_source_id");
         handleMastSectorSearch();
     } else if (!pageContext.overview_mode && pageContext.gaia_source_id && pageContext.sector) {
+        console.log("Branch 2: Editor mode with gaia_source_id and sector");
         handleMastSectorSearch();
         startPipelineRun(pageContext.gaia_source_id, pageContext.sector);
+    } else if (!pageContext.overview_mode && pageContext.gaia_source_id && !pageContext.sector) {
+        console.log("Branch 3: Editor mode with gaia_source_id but NO sector - calling handleMastSectorSearch");
+        handleMastSectorSearch();
+    } else {
+        console.log("Branch 4: No automatic action taken");
     }
 })();

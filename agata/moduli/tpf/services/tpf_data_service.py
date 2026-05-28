@@ -142,6 +142,78 @@ def _build_frames_metadata_payload(flux_cube: np.ndarray) -> dict:
     }
 
 
+def tpf_pixel_to_world(x_tpf: float, y_tpf: float, wcs, shape: tuple[int, int] | list[int]) -> tuple[float | None, float | None]:
+    """Convert TPF cutout pixels to RA/DEC using the cutout WCS directly."""
+    if wcs is None:
+        return None, None
+
+    try:
+        ra, dec = wcs.all_pix2world(float(x_tpf), float(y_tpf), 0)
+        return float(ra), float(dec)
+    except Exception as e:
+        LOGGER.debug("Failed to convert TPF pixel to world: %s", str(e))
+        return None, None
+
+
+def _build_wcs_debug_payload(
+    tpf_wcs,
+    shape: list[int],
+    pixels_header,
+    *,
+    wcs_source: str | None = None,
+    flux_shape: tuple[int, ...] | list[int] | None = None,
+    wcs_warning: str | None = None,
+) -> dict:
+    """Raccoglie info di debug per diagnosi WCS."""
+    debug = {
+        "fits_header": {},
+        "shape_calculated": shape,
+        "wcs_info": {},
+        "test_conversion": None,
+    }
+    if wcs_source:
+        debug["wcs_info"]["wcs_source"] = wcs_source
+    if flux_shape is not None:
+        debug["wcs_info"]["flux_shape"] = [int(value) for value in flux_shape]
+    if wcs_warning:
+        debug["wcs_info"]["warning"] = wcs_warning
+
+    if pixels_header:
+        for key in ["NAXIS", "NAXIS1", "NAXIS2", "TNAXIS", "TNAXIS1", "TNAXIS2", "CRPIX1", "CRPIX2", "CRVAL1", "CRVAL2", "CD1_1", "CD1_2", "CD2_1", "CD2_2"]:
+            if key in pixels_header:
+                debug["fits_header"][key] = pixels_header[key]
+
+    if tpf_wcs is not None:
+        debug["wcs_info"]["has_celestial"] = tpf_wcs.has_celestial
+        try:
+            debug["wcs_info"]["pixel_shape"] = tpf_wcs.pixel_shape
+        except:
+            debug["wcs_info"]["pixel_shape"] = "unavailable"
+        try:
+            debug["wcs_info"]["axis_type_names"] = tpf_wcs.axis_type_names
+        except:
+            debug["wcs_info"]["axis_type_names"] = "unavailable"
+
+        # Test conversion: prendi punto al centro della griglia
+        if shape and len(shape) >= 2:
+            rows, cols = shape[0], shape[1]
+            center_x = cols / 2.0
+            center_y = rows / 2.0
+            try:
+                ra_center, dec_center = tpf_pixel_to_world(center_x, center_y, tpf_wcs, shape)
+                debug["test_conversion"] = {
+                    "pixel_input": [center_x, center_y],
+                    "world_output": [round(float(ra_center), 5), round(float(dec_center), 5)],
+                    "center_world_ra": round(float(ra_center), 6),
+                    "center_world_dec": round(float(dec_center), 6),
+                    "description": "Conversione da pixel al centro della griglia"
+                }
+            except Exception as e:
+                debug["test_conversion"] = {"error": str(e)}
+
+    return debug
+
+
 def _build_pixel_world_payload(tpf_wcs, shape: list[int]) -> dict | None:
     if tpf_wcs is None:
         return None
@@ -156,9 +228,13 @@ def _build_pixel_world_payload(tpf_wcs, shape: list[int]) -> dict | None:
             row_ra = []
             row_dec = []
             for col in range(cols):
-                ra_deg, dec_deg = tpf_wcs.all_pix2world([[float(col), float(row)]], 0)[0]
-                row_ra.append(round(float(ra_deg), 5))
-                row_dec.append(round(float(dec_deg), 5))
+                ra_deg, dec_deg = tpf_pixel_to_world(float(col), float(row), tpf_wcs, shape)
+                if ra_deg is not None and dec_deg is not None:
+                    row_ra.append(round(float(ra_deg), 5))
+                    row_dec.append(round(float(dec_deg), 5))
+                else:
+                    row_ra.append(None)
+                    row_dec.append(None)
             ra_grid.append(row_ra)
             dec_grid.append(row_dec)
         return {
@@ -225,14 +301,50 @@ def load_local_tpf(gaia_source_id: str, sector: int, data_dir: str, *, include_f
             primary_header = hdul[0].header
             pixels_header = pixels_hdu.header
             headers = [pixels_header, primary_header]
+            tpf_wcs = None
+            wcs_source = None
+            wcs_warning = None
             try:
-                tpf_wcs = WCS(pixels_hdu.header, fobj=hdul, keysel=["binary"])
+                tpf_wcs = WCS(pixels_hdu.header, keysel=["binary"])
+                wcs_source = "fallback_astropy"
                 if not tpf_wcs.has_celestial:
                     LOGGER.warning("Binary-table WCS is not celestial for gaia_source_id=%s sector=%s", gaia_source_id, sector)
                     tpf_wcs = None
+                    wcs_source = None
+                else:
+                    LOGGER.debug("Fallback Astropy WCS created for gaia_source_id=%s sector=%s", gaia_source_id, sector)
             except Exception:
                 LOGGER.exception("Unable to build WCS for gaia_source_id=%s sector=%s", gaia_source_id, sector)
                 tpf_wcs = None
+                wcs_source = None
+                wcs_warning = "fallback_astropy_failed"
+            try:
+                import lightkurve as lk
+
+                lightkurve_tpf = lk.read(str(file_path))
+                lightkurve_wcs = getattr(lightkurve_tpf, "wcs", None)
+                if lightkurve_wcs is not None and getattr(lightkurve_wcs, "has_celestial", False):
+                    tpf_wcs = lightkurve_wcs
+                    wcs_source = "lightkurve_tpf_wcs"
+                    wcs_warning = None
+                    LOGGER.info(
+                        "Using Lightkurve TPF WCS for gaia_source_id=%s sector=%s pixel_shape=%s",
+                        gaia_source_id,
+                        sector,
+                        getattr(lightkurve_wcs, "pixel_shape", None),
+                    )
+                else:
+                    wcs_warning = wcs_warning or "lightkurve_wcs_not_celestial"
+                    LOGGER.warning("Lightkurve TPF WCS not celestial for gaia_source_id=%s sector=%s", gaia_source_id, sector)
+            except Exception as err:
+                wcs_warning = wcs_warning or f"lightkurve_unavailable: {err}"
+                LOGGER.warning(
+                    "Lightkurve TPF WCS unavailable for gaia_source_id=%s sector=%s, using %s: %s",
+                    gaia_source_id,
+                    sector,
+                    wcs_source or "no_wcs",
+                    err,
+                )
             header_sector = pixels_header.get("SECTOR") or primary_header.get("SECTOR")
             camera = pixels_header.get("CAMERA") or primary_header.get("CAMERA")
             ccd = pixels_header.get("CCD") or primary_header.get("CCD")
@@ -247,6 +359,14 @@ def load_local_tpf(gaia_source_id: str, sector: int, data_dir: str, *, include_f
             time_unit, time_unit_key = _first_header_value(headers, ["TIMEUNIT"])
             shape = [len(flux_grid), len(flux_grid[0]) if flux_grid else 0]
             pixel_world = _build_pixel_world_payload(tpf_wcs, shape)
+            wcs_debug = _build_wcs_debug_payload(
+                tpf_wcs,
+                shape,
+                pixels_header,
+                wcs_source=wcs_source,
+                flux_shape=list(flux_cube.shape),
+                wcs_warning=wcs_warning,
+            )
             cadence_count = int(flux_cube.shape[0]) if flux_cube.ndim == 3 else 1
             source_type, message = _detect_source_info(file_path)
             bjd_ref = None
@@ -288,7 +408,11 @@ def load_local_tpf(gaia_source_id: str, sector: int, data_dir: str, *, include_f
                     "bjd_ref_f": float(bjd_ref_f) if bjd_ref_f is not None else None,
                     "bjd_ref_f_key": bjd_ref_f_key,
                     "bjd_ref": bjd_ref,
+                    "wcs_source": wcs_source,
+                    "wcs_warning": wcs_warning,
+                    "flux_shape": list(flux_cube.shape),
                     "pixel_world": pixel_world,
+                    "wcs_debug": wcs_debug,
                 },
                 "_time_values": time_values,
                 "_flux_cube": flux_cube,
