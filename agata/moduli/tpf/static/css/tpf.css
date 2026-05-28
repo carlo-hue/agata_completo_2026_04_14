@@ -257,6 +257,71 @@ h2 {
     word-break: break-all;
 }
 
+.gaia-stars-box {
+    max-height: 320px;
+    overflow: auto;
+    border: 1px solid rgba(31, 56, 69, 0.08);
+    border-radius: 8px;
+    background: #fff;
+}
+
+.gaia-stars-box.empty-state {
+    padding: 12px;
+    color: var(--tpf-muted);
+}
+
+.gaia-stars-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.84rem;
+}
+
+.gaia-stars-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #eaf0f3;
+    color: #23415c;
+    font-weight: 700;
+    text-align: left;
+    padding: 8px 8px;
+    border-bottom: 1px solid rgba(31, 56, 69, 0.12);
+    white-space: nowrap;
+}
+
+.gaia-stars-table th button {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    padding: 0;
+    text-align: left;
+}
+
+.gaia-stars-table tbody tr:hover {
+    background: #f7fafb;
+}
+
+.gaia-stars-table td {
+    padding: 7px 8px;
+    border-bottom: 1px solid rgba(31, 56, 69, 0.08);
+    vertical-align: middle;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.gaia-stars-table td:first-child {
+    font-family: Consolas, "Courier New", monospace;
+}
+
+.gaia-stars-summary {
+    margin: 0 0 0.55rem;
+    color: var(--tpf-muted);
+    font-size: 0.86rem;
+}
+
 .mast-sector-footer {
     display: flex;
     justify-content: space-between;

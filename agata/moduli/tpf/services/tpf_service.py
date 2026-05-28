@@ -364,6 +364,8 @@ def _crossmatch_overlay_vsx(sources: list[dict], ra_center: float, dec_center: f
                 source["variable_oid"] = str(row["OID"])
             if "Name" in vsx_table.colnames and row["Name"] is not None:
                 source["variable_name"] = str(row["Name"])
+            if "Period" in vsx_table.colnames and row["Period"] is not None:
+                source["variable_period_days"] = rounded_or_none(row["Period"], 6)
             match_count += 1
         LOGGER.info("VSX cross-match overlay completato: %s stelle matchate.", match_count)
     except Exception:
@@ -657,6 +659,58 @@ def _build_real_tpf_overlay(target_info: dict, tpf_payload: dict, wcs) -> dict:
     }
 
 
+def _add_crval_target_debug(tpf_payload: dict, target_info: dict, tpf_wcs) -> None:
+    if tpf_wcs is None or target_info.get("ra_deg") is None:
+        return
+    try:
+        crval1 = float(tpf_wcs.wcs.crval[0])
+        crval2 = float(tpf_wcs.wcs.crval[1])
+        target_ra = float(target_info["ra_deg"])
+        target_dec = float(target_info["dec_deg"])
+        if "metadata" not in tpf_payload:
+            tpf_payload["metadata"] = {}
+        if "wcs_debug" not in tpf_payload["metadata"]:
+            tpf_payload["metadata"]["wcs_debug"] = {}
+        tpf_payload["metadata"]["wcs_debug"]["crval_vs_target"] = {
+            "wcs_crval": [round(crval1, 5), round(crval2, 5)],
+            "target_info": [round(target_ra, 5), round(target_dec, 5)],
+            "delta_ra_arcsec": round((crval1 - target_ra) * 3600, 2),
+            "delta_dec_arcsec": round((crval2 - target_dec) * 3600, 2),
+        }
+    except Exception as e:
+        LOGGER.debug("Failed to add CRVAL alignment diagnostic: %s", str(e))
+
+
+def build_tpf_metadata_payload(gaia_source_id: str, sector) -> dict:
+    normalized_gaia_source_id = validate_gaia_source_id(gaia_source_id)
+    normalized_sector = validate_sector(sector)
+    real_tpf = load_local_tpf(normalized_gaia_source_id, normalized_sector, settings.local_tpf_data_dir, include_frames=False)
+    target_info, gaia_status = _resolve_target_info_with_fallback(normalized_gaia_source_id, real_tpf=real_tpf)
+    if real_tpf is None:
+        return {
+            "status": "ok",
+            "metadata": {"gaia_status": gaia_status},
+            "target_info": target_info,
+            "overlay": _empty_overlay_payload("Overlay Gaia disponibile solo con TPF reale e WCS utilizzabile."),
+        }
+
+    real_tpf.pop("_time_values", None)
+    real_tpf.pop("_flux_cube", None)
+    tpf_wcs = real_tpf.pop("_wcs", None)
+    tpf_payload = real_tpf
+    metadata = _resolve_reference_magnitude(target_info, tpf_payload.get("metadata"))
+    metadata["gaia_status"] = gaia_status
+    tpf_payload["metadata"] = metadata
+    overlay = _build_real_tpf_overlay(target_info, tpf_payload, tpf_wcs)
+    _add_crval_target_debug(tpf_payload, target_info, tpf_wcs)
+    return {
+        "status": "ok",
+        "metadata": tpf_payload.get("metadata") or metadata,
+        "target_info": target_info,
+        "overlay": overlay,
+    }
+
+
 def _build_flux_grid(target_info: dict, nearby_sources: list[dict]) -> list[list[float]]:
     size = PREVIEW_SIZE_PX
     center = size // 2
@@ -927,26 +981,7 @@ def run_tpf_pipeline(gaia_source_id: str, sector, masks: dict | None = None, ski
                     "Light curve reale non disponibile: dati temporali o cubo FLUX assenti.",
                 )
 
-            # Aggiungi confronto CRVAL vs target_info al debug panel
-            if tpf_wcs is not None and target_info.get("ra_deg") is not None:
-                try:
-                    crval1 = float(tpf_wcs.wcs.crval[0])
-                    crval2 = float(tpf_wcs.wcs.crval[1])
-                    target_ra = float(target_info["ra_deg"])
-                    target_dec = float(target_info["dec_deg"])
-                    # Assicura che metadata e wcs_debug esistano
-                    if "metadata" not in tpf_payload:
-                        tpf_payload["metadata"] = {}
-                    if "wcs_debug" not in tpf_payload["metadata"]:
-                        tpf_payload["metadata"]["wcs_debug"] = {}
-                    tpf_payload["metadata"]["wcs_debug"]["crval_vs_target"] = {
-                        "wcs_crval": [round(crval1, 5), round(crval2, 5)],
-                        "target_info": [round(target_ra, 5), round(target_dec, 5)],
-                        "delta_ra_arcsec": round((crval1 - target_ra) * 3600, 2),
-                        "delta_dec_arcsec": round((crval2 - target_dec) * 3600, 2),
-                    }
-                except Exception as e:
-                    LOGGER.debug("Failed to add CRVAL alignment diagnostic: %s", str(e))
+            _add_crval_target_debug(tpf_payload, target_info, tpf_wcs)
         else:
             LOGGER.info("Falling back to synthetic TPF preview for gaia_source_id=%s sector=%s", normalized_gaia_source_id, normalized_sector)
             nearby_sources = _fetch_nearby_gaia_sources(target_info)

@@ -6,6 +6,7 @@ from pathlib import Path
 
 MODULE_DIR = Path(__file__).resolve().parent
 LOCAL_TPF_DATA_DIR = MODULE_DIR / "Dati_di_Prova"
+JOB_STORAGE_DIR = MODULE_DIR / ".job_storage"
 _LEGACY_TPF_UTIL_PATH_RAW: str = os.getenv("TPF_LEGACY_UTIL_PATH", "")
 
 
@@ -16,6 +17,7 @@ class TpfSettings:
     placeholder_message: str = "Editor TPF pronto."
     local_tpf_data_dir: str = str(LOCAL_TPF_DATA_DIR)
     mast_tpf_download_dir: str = str(LOCAL_TPF_DATA_DIR)
+    job_storage_dir: str = str(JOB_STORAGE_DIR)
     legacy_tpf_util_path: str = _LEGACY_TPF_UTIL_PATH_RAW
     default_cutout_size: int = 10
     mast_download_timeout_seconds: int = 90

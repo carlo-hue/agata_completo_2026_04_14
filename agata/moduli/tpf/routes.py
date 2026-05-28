@@ -5,7 +5,7 @@ import logging
 from flask import Blueprint, current_app, jsonify, render_template, request, url_for
 
 from .config import settings
-from .services import delete_tpf_session, download_tpf_from_mast, get_local_tpf_sectors_for_gaia, get_mast_sectors_for_gaia, list_tpf_sessions, load_tpf_frame_window, promote_tpf_curve, restore_tpf_session, run_tpf_pipeline, save_tpf_session_stub
+from .services import JobNotFoundError, delete_tpf_session, download_tpf_from_mast, get_job_result, get_job_status, get_local_tpf_sectors_for_gaia, get_mast_sectors_for_gaia, list_tpf_sessions, load_tpf_frame_window, promote_tpf_curve, restore_tpf_session, run_tpf_pipeline, save_tpf_session_stub, start_metadata_job
 from .services.utils import validate_cutout_size, validate_gaia_source_id, validate_sector
 
 LOGGER = logging.getLogger(__name__)
@@ -125,12 +125,40 @@ def create_blueprint() -> Blueprint:
             bool(masks),
         )
         try:
-            result = run_tpf_pipeline(gaia_source_id, sector, masks=masks)
+            result = run_tpf_pipeline(gaia_source_id, sector, masks=masks, skip_target_info=True)
+            if result.get("mode") == "real" and result.get("tpf", {}).get("available"):
+                metadata_job = start_metadata_job(gaia_source_id, sector)
+                result["metadata_job_id"] = metadata_job.get("job_id")
+                result["metadata_job"] = metadata_job
         except ValueError as err:
             LOGGER.warning("TPF pipeline validation error for %s sector=%s: %s", gaia_source_id, sector, err)
             return _json_error(str(err), 400)
         except Exception as err:
             LOGGER.exception("TPF pipeline failed for gaia_source_id=%s sector=%s", gaia_source_id, sector)
+            return _json_error(str(err), 502)
+        return jsonify(result)
+
+    @bp.get("/api/job/<job_id>/status")
+    def job_status_api(job_id: str):
+        try:
+            result = get_job_status(job_id)
+        except JobNotFoundError as err:
+            return _json_error(str(err), 404)
+        except Exception as err:
+            LOGGER.exception("TPF job status failed for %s", job_id)
+            return _json_error(str(err), 502)
+        return jsonify(result)
+
+    @bp.get("/api/job/<job_id>/result")
+    def job_result_api(job_id: str):
+        try:
+            result = get_job_result(job_id)
+        except JobNotFoundError as err:
+            return _json_error(str(err), 404)
+        except ValueError as err:
+            return _json_error(str(err), 400)
+        except Exception as err:
+            LOGGER.exception("TPF job result failed for %s", job_id)
             return _json_error(str(err), 502)
         return jsonify(result)
 

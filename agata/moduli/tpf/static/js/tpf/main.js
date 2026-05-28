@@ -37,6 +37,7 @@
     const tpfInfo = document.getElementById("tpfInfo");
     const tpfHeaderMeta = document.getElementById("tpfHeaderMeta");
     const overlayInfo = document.getElementById("overlayInfo");
+    const gaiaStarsTableBox = document.getElementById("gaiaStarsTableBox");
     const tpfDetailsInfo = document.getElementById("tpfDetailsInfo");
     const overlayDetailsInfo = document.getElementById("overlayDetailsInfo");
     const lightcurveDetailsInfo = document.getElementById("lightcurveDetailsInfo");
@@ -72,6 +73,7 @@
     let lastMastSectorsResult = null;
     let mastHasRemoteResults = false;
     let activeRestoredSessionId = null;
+    let gaiaStarsSort = { key: "dist_arcsec", direction: "asc" };
 
     if (
         !appRoot || !gaiaSourceIdInput || !saveButton || !promoteButton
@@ -80,7 +82,7 @@
         || !statusBox || !errorBox || !output || !returnPayloadBox
         || !sessionChoiceDialog || !sessionChoiceMessage || !sessionChoiceUpdateButton || !sessionChoiceNewButton || !sessionChoiceCancelButton
         || !targetInfo
-        || !tpfInfo || !tpfHeaderMeta || !overlayInfo || !tpfDetailsInfo || !overlayDetailsInfo || !lightcurveDetailsInfo
+        || !tpfInfo || !tpfHeaderMeta || !overlayInfo || !gaiaStarsTableBox || !tpfDetailsInfo || !overlayDetailsInfo || !lightcurveDetailsInfo
         || !editInfo || !maskInfo || !lightcurveInfo || !tpfPlot || !lightcurvePlot || !sessionRestoreBox
     ) {
         return;
@@ -228,6 +230,43 @@
             .replace(/>/g, "&gt;")
             .replace(/\"/g, "&quot;")
             .replace(/'/g, "&#39;");
+    }
+
+    function numericOrNull(value) {
+        if (value === null || value === undefined || value === "") {
+            return null;
+        }
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : null;
+    }
+
+    function firstNumericValue(values) {
+        for (const value of values) {
+            const numeric = numericOrNull(value);
+            if (numeric !== null) {
+                return numeric;
+            }
+        }
+        return null;
+    }
+
+    function formatDecimal(value, digits) {
+        const numeric = numericOrNull(value);
+        return numeric === null ? "-" : numeric.toFixed(digits);
+    }
+
+    function formatFluxRatio(value) {
+        const numeric = numericOrNull(value);
+        if (numeric === null) {
+            return "-";
+        }
+        if (numeric >= 0.1) {
+            return numeric.toFixed(3);
+        }
+        if (numeric >= 0.001) {
+            return numeric.toFixed(5);
+        }
+        return numeric.toExponential(2);
     }
 
     function getCurrentMastCutoutSize() {
@@ -496,6 +535,7 @@
         tpfDetailsInfo.textContent = "TPF non ancora richiesto.";
         overlayDetailsInfo.textContent = "Overlay target/Gaia non ancora disponibile.";
         lightcurveDetailsInfo.textContent = "Light curve non ancora richiesta.";
+        renderGaiaStarsTable(null);
         maskInfo.textContent = "Selezione automatica foreground/background non ancora disponibile.";
         maskInfo.classList.remove("warning");
         lightcurveInfo.textContent = "Light curve non ancora richiesta.";
@@ -947,6 +987,20 @@
         return maxSize - (clamped * (maxSize - minSize));
     }
 
+    function getVisibleGaiaSources(overlay) {
+        if (!overlay || !Array.isArray(overlay.gaia_sources) || !overlay.gaia_sources.length) {
+            return [];
+        }
+        const maxVisibleMag = Number(gaiaSizeMaxMagInput.value);
+        if (!Number.isFinite(maxVisibleMag)) {
+            return overlay.gaia_sources.slice();
+        }
+        return overlay.gaia_sources.filter((item) => {
+            const gmag = numericOrNull(item && item.gmag);
+            return gmag === null || gmag <= maxVisibleMag;
+        });
+    }
+
     function buildTargetOverlayTrace(overlay) {
         if (!overlay || !overlay.target_position || overlay.target_position.x === undefined || overlay.target_position.y === undefined) {
             return null;
@@ -955,9 +1009,10 @@
         const targetGmag = Number.isFinite(Number(overlay.target_position.gmag))
             ? Number(overlay.target_position.gmag)
             : Number(lastRunResult && lastRunResult.target ? lastRunResult.target.gmag : null);
+        const fixedSize = 5;
         const targetSize = gaiaSizeByMagnitudeEnabled
-            ? getMagnitudeScaledMarkerSize(targetGmag, sizeBounds, 14, 10, 22)
-            : 14;
+            ? getMagnitudeScaledMarkerSize(targetGmag, sizeBounds, fixedSize, 3, 22)
+            : fixedSize;
         const targetHoverText = formatGaiaOverlayHoverText({
             source_id: (lastRunResult && lastRunResult.target && lastRunResult.target.gaia_source_id) || "-",
             gmag: targetGmag,
@@ -1015,17 +1070,7 @@
         if (!gaiaOverlayEnabled || !overlay || !Array.isArray(overlay.gaia_sources) || !overlay.gaia_sources.length) {
             return [];
         }
-        const maxVisibleMag = Number(gaiaSizeMaxMagInput.value);
-        const visibleSources = Number.isFinite(maxVisibleMag)
-            ? overlay.gaia_sources.filter((item) => {
-                const rawGmag = item && item.gmag;
-                if (rawGmag === null || rawGmag === undefined || rawGmag === "") {
-                    return true;
-                }
-                const gmag = Number(rawGmag);
-                return !Number.isFinite(gmag) || gmag <= maxVisibleMag;
-            })
-            : overlay.gaia_sources;
+        const visibleSources = getVisibleGaiaSources(overlay);
         if (!visibleSources.length) {
             return [];
         }
@@ -1082,6 +1127,148 @@
             traces.push(variableTrace);
         }
         return traces;
+    }
+
+    const GAIA_STAR_COLUMNS = [
+        { key: "source_id", label: "src id", formatter: (row) => escapeHtml(row.source_id || "-") },
+        { key: "dist_arcsec", label: "r sec", formatter: (row) => formatDecimal(row.dist_arcsec, 2) },
+        { key: "dist_arcmin", label: "r min", formatter: (row) => formatDecimal(row.dist_arcmin, 3) },
+        { key: "gmag", label: "G mag", formatter: (row) => formatDecimal(row.gmag, 3) },
+        { key: "delta_mag", label: "delta mag", formatter: (row) => formatDecimal(row.delta_mag, 3) },
+        { key: "flux_ratio", label: "flux r", formatter: (row) => formatFluxRatio(row.flux_ratio) },
+        { key: "psf_flux_v", label: "PSF flux V", formatter: (row) => formatDecimal(row.psf_flux_v, 6) },
+        { key: "period", label: "Per", formatter: (row) => formatDecimal(row.period, 5) },
+        { key: "variable_label", label: "var", formatter: (row) => escapeHtml(row.variable_label || "-") },
+    ];
+
+    function getTargetGmagForDelta(overlay) {
+        return firstNumericValue([
+            overlay && overlay.target_position ? overlay.target_position.gmag : null,
+            lastRunResult && lastRunResult.target ? lastRunResult.target.gmag : null,
+        ]);
+    }
+
+    function getGaiaPeriod(item) {
+        return firstNumericValue([
+            item && item.variable_period,
+            item && item.variable_period_days,
+            item && item.period,
+            item && item.Period,
+        ]);
+    }
+
+    function getVariableLabel(item) {
+        if (!item || !item.is_variable) {
+            return "-";
+        }
+        if (item.variable_type) {
+            return String(item.variable_type);
+        }
+        if (Array.isArray(item.variable_catalogs) && item.variable_catalogs.length) {
+            return item.variable_catalogs.join(", ");
+        }
+        return "si";
+    }
+
+    function buildGaiaStarRows(overlay) {
+        const targetGmag = getTargetGmagForDelta(overlay);
+        const rows = [];
+        if (overlay && overlay.target_position && overlay.target_position.x !== undefined && overlay.target_position.y !== undefined) {
+            const targetSourceId = lastRunResult && lastRunResult.target && lastRunResult.target.gaia_source_id
+                ? String(lastRunResult.target.gaia_source_id)
+                : "target";
+            rows.push({
+                source_id: `${targetSourceId} (target)`,
+                dist_arcsec: 0,
+                dist_arcmin: 0,
+                gmag: targetGmag,
+                delta_mag: targetGmag !== null ? 0 : null,
+                flux_ratio: targetGmag !== null ? 1 : null,
+                psf_flux_v: null,
+                period: null,
+                variable_label: "target",
+            });
+        }
+        const gaiaRows = gaiaOverlayEnabled ? getVisibleGaiaSources(overlay) : [];
+        for (const item of gaiaRows) {
+            const gmag = numericOrNull(item && item.gmag);
+            const deltaMag = gmag !== null && targetGmag !== null ? gmag - targetGmag : null;
+            const fluxRatio = deltaMag !== null ? Math.pow(10, -0.4 * deltaMag) : null;
+            const distArcsec = numericOrNull(item && item.dist_arcsec);
+            const sourceId = item && item.source_id !== undefined ? String(item.source_id) : "-";
+            const sourceLabel = distArcsec !== null && Math.abs(distArcsec) <= 1.0
+                ? `${sourceId} (coincidenti?)`
+                : sourceId;
+            rows.push({
+                source_id: sourceLabel,
+                dist_arcsec: distArcsec,
+                dist_arcmin: distArcsec !== null ? distArcsec / 60.0 : null,
+                gmag,
+                delta_mag: deltaMag,
+                flux_ratio: fluxRatio,
+                psf_flux_v: numericOrNull(item && (item.psf_flux_v ?? item.psf_flux)),
+                period: getGaiaPeriod(item),
+                variable_label: getVariableLabel(item),
+            });
+        }
+        return rows;
+    }
+
+    function compareGaiaStarRows(left, right, key) {
+        const leftValue = left[key];
+        const rightValue = right[key];
+        const leftMissing = leftValue === null || leftValue === undefined || leftValue === "";
+        const rightMissing = rightValue === null || rightValue === undefined || rightValue === "";
+        if (leftMissing && rightMissing) {
+            return 0;
+        }
+        if (leftMissing) {
+            return 1;
+        }
+        if (rightMissing) {
+            return -1;
+        }
+        if (typeof leftValue === "number" && typeof rightValue === "number") {
+            return leftValue - rightValue;
+        }
+        return String(leftValue).localeCompare(String(rightValue), "it", { numeric: true, sensitivity: "base" });
+    }
+
+    function renderGaiaStarsTable(overlay) {
+        if (!gaiaStarsTableBox) {
+            return;
+        }
+        const totalGaiaSources = gaiaOverlayEnabled && overlay && Array.isArray(overlay.gaia_sources) ? overlay.gaia_sources.length : 0;
+        const hasTargetRow = !!(overlay && overlay.target_position && overlay.target_position.x !== undefined && overlay.target_position.y !== undefined);
+        const totalSources = totalGaiaSources + (hasTargetRow ? 1 : 0);
+        const rows = buildGaiaStarRows(overlay);
+        if (!rows.length) {
+            gaiaStarsTableBox.className = "gaia-stars-box empty-state";
+            gaiaStarsTableBox.textContent = totalSources ? "Nessuna stella Gaia visibile con il filtro mag max corrente." : "Nessuna stella/target visualizzata.";
+            return;
+        }
+        const sortDirection = gaiaStarsSort.direction === "desc" ? -1 : 1;
+        const sortedRows = rows.slice().sort((left, right) => compareGaiaStarRows(left, right, gaiaStarsSort.key) * sortDirection);
+        const maxVisibleMag = Number(gaiaSizeMaxMagInput.value);
+        const magText = gaiaOverlayEnabled && Number.isFinite(maxVisibleMag) ? ` | mag max ${maxVisibleMag.toFixed(2)}` : "";
+        const headerHtml = GAIA_STAR_COLUMNS.map((column) => {
+            const indicator = gaiaStarsSort.key === column.key
+                ? (gaiaStarsSort.direction === "asc" ? " ^" : " v")
+                : "";
+            return `<th><button type="button" data-gaia-star-sort="${escapeHtml(column.key)}">${escapeHtml(column.label)}${indicator}</button></th>`;
+        }).join("");
+        const bodyHtml = sortedRows.map((row) => {
+            const cells = GAIA_STAR_COLUMNS.map((column) => `<td>${column.formatter(row)}</td>`).join("");
+            return `<tr>${cells}</tr>`;
+        }).join("");
+        gaiaStarsTableBox.className = "gaia-stars-box";
+        gaiaStarsTableBox.innerHTML = `
+            <p class="gaia-stars-summary">Stelle visualizzate: ${rows.length} / ${totalSources}${magText}</p>
+            <table class="gaia-stars-table">
+                <thead><tr>${headerHtml}</tr></thead>
+                <tbody>${bodyHtml}</tbody>
+            </table>
+        `;
     }
 
     function updateGaiaOverlayToggleButton() {
@@ -1529,6 +1716,7 @@
         maskInfo.classList.toggle("warning", masksNeedRecalc());
         updateFrameControls(tpf);
         syncGaiaMaxMagInput(tpf.overlay || null);
+        renderGaiaStarsTable(tpf.overlay || null);
 
         const currentGrid = getCurrentFrameGrid(tpf);
         if (Array.isArray(currentGrid)) {
@@ -1699,6 +1887,7 @@
             overlayInfo.textContent = formatOverlayInfo(data.tpf);
             tpfDetailsInfo.textContent = tpfInfo.textContent;
             overlayDetailsInfo.textContent = overlayInfo.textContent;
+            renderGaiaStarsTable(data.tpf && data.tpf.overlay ? data.tpf.overlay : null);
             maskInfo.textContent = formatMaskInfo(data.tpf);
             maskInfo.classList.toggle("warning", masksNeedRecalc());
             updateFrameControls(data.tpf || null);
@@ -2615,6 +2804,26 @@
     });
 
     gaiaSizeMaxMagInput.addEventListener("input", function () {
+        renderCurrentTpfState();
+    });
+
+    gaiaStarsTableBox.addEventListener("click", function (event) {
+        const button = event.target.closest("[data-gaia-star-sort]");
+        if (!button) {
+            return;
+        }
+        const key = button.getAttribute("data-gaia-star-sort");
+        if (!key) {
+            return;
+        }
+        if (gaiaStarsSort.key === key) {
+            gaiaStarsSort = {
+                key,
+                direction: gaiaStarsSort.direction === "asc" ? "desc" : "asc",
+            };
+        } else {
+            gaiaStarsSort = { key, direction: "asc" };
+        }
         renderCurrentTpfState();
     });
 
