@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import math
+from collections.abc import Mapping
+from numbers import Integral, Real
+
 
 def validate_gaia_source_id(value: str) -> str:
     normalized = str(value or "").strip()
@@ -35,9 +39,30 @@ def rounded_or_none(value, digits: int = 6):
     if value is None:
         return None
     try:
-        return round(float(value), digits)
+        numeric = float(value)
     except (TypeError, ValueError):
         return None
+    if not math.isfinite(numeric):
+        return None
+    return round(numeric, digits)
+
+
+def json_safe_value(value):
+    """Return a JSON-compatible value without NaN/Infinity literals."""
+    if value is None or isinstance(value, (str, bool)):
+        return value
+    if isinstance(value, Integral):
+        return int(value)
+    if isinstance(value, Real):
+        numeric = float(value)
+        return numeric if math.isfinite(numeric) else None
+    if isinstance(value, Mapping):
+        return {str(key): json_safe_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [json_safe_value(item) for item in value]
+    if hasattr(value, "tolist"):
+        return json_safe_value(value.tolist())
+    return value
 
 
 def point_is_inside_grid(x, y, shape: tuple[int, int] | list[int]) -> bool:
@@ -59,6 +84,7 @@ def build_overlay_source_entry(
     ra=None,
     dec=None,
     dist_arcsec=None,
+    dist_target_px=None,
     is_variable: bool = False,
     variable_type=None,
     variable_catalogs=None,
@@ -71,6 +97,7 @@ def build_overlay_source_entry(
         "ra_deg": rounded_or_none(ra, 6),
         "dec_deg": rounded_or_none(dec, 6),
         "dist_arcsec": rounded_or_none(dist_arcsec, 3),
+        "dist_target_px": rounded_or_none(dist_target_px, 3),
         "is_variable": bool(is_variable),
         "variable_type": variable_type,
         "variable_catalogs": list(variable_catalogs or []),

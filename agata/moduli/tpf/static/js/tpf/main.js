@@ -491,7 +491,7 @@
         };
 
         let minValue = percentile(0.02);
-        let maxValue = percentile(0.98);
+        let maxValue = percentile(0.90);
 
         if (!Number.isFinite(minValue) || !Number.isFinite(maxValue) || minValue >= maxValue) {
             minValue = allValues[0];
@@ -1131,14 +1131,17 @@
 
     const GAIA_STAR_COLUMNS = [
         { key: "source_id", label: "src id", formatter: (row) => escapeHtml(row.source_id || "-") },
+        { key: "ra_deg", label: "RA", formatter: (row) => formatDecimal(row.ra_deg, 6) },
+        { key: "dec_deg", label: "Dec", formatter: (row) => formatDecimal(row.dec_deg, 6) },
         { key: "dist_arcsec", label: "r sec", formatter: (row) => formatDecimal(row.dist_arcsec, 2) },
+        { key: "dist_target_px", label: "r pix", formatter: (row) => formatDecimal(row.dist_target_px, 3) },
         { key: "dist_arcmin", label: "r min", formatter: (row) => formatDecimal(row.dist_arcmin, 3) },
         { key: "gmag", label: "G mag", formatter: (row) => formatDecimal(row.gmag, 3) },
         { key: "delta_mag", label: "delta mag", formatter: (row) => formatDecimal(row.delta_mag, 3) },
         { key: "flux_ratio", label: "flux r", formatter: (row) => formatFluxRatio(row.flux_ratio) },
-        { key: "psf_flux_v", label: "PSF flux V", formatter: (row) => formatDecimal(row.psf_flux_v, 6) },
         { key: "period", label: "Per", formatter: (row) => formatDecimal(row.period, 5) },
         { key: "variable_label", label: "var", formatter: (row) => escapeHtml(row.variable_label || "-") },
+        { key: "psf_flux_v", label: "PSF flux V", formatter: (row) => formatDecimal(row.psf_flux_v, 6) },
     ];
 
     function getTargetGmagForDelta(overlay) {
@@ -1179,14 +1182,17 @@
                 : "target";
             rows.push({
                 source_id: `${targetSourceId} (target)`,
+                ra_deg: numericOrNull(lastRunResult && lastRunResult.target ? lastRunResult.target.ra_deg : null),
+                dec_deg: numericOrNull(lastRunResult && lastRunResult.target ? lastRunResult.target.dec_deg : null),
                 dist_arcsec: 0,
+                dist_target_px: 0,
                 dist_arcmin: 0,
                 gmag: targetGmag,
                 delta_mag: targetGmag !== null ? 0 : null,
                 flux_ratio: targetGmag !== null ? 1 : null,
                 psf_flux_v: null,
                 period: null,
-                variable_label: "target",
+                variable_label: "-",
             });
         }
         const gaiaRows = gaiaOverlayEnabled ? getVisibleGaiaSources(overlay) : [];
@@ -1201,7 +1207,10 @@
                 : sourceId;
             rows.push({
                 source_id: sourceLabel,
+                ra_deg: numericOrNull(item && item.ra_deg),
+                dec_deg: numericOrNull(item && item.dec_deg),
                 dist_arcsec: distArcsec,
+                dist_target_px: numericOrNull(item && item.dist_target_px),
                 dist_arcmin: distArcsec !== null ? distArcsec / 60.0 : null,
                 gmag,
                 delta_mag: deltaMag,
@@ -1253,7 +1262,7 @@
         const magText = gaiaOverlayEnabled && Number.isFinite(maxVisibleMag) ? ` | mag max ${maxVisibleMag.toFixed(2)}` : "";
         const headerHtml = GAIA_STAR_COLUMNS.map((column) => {
             const indicator = gaiaStarsSort.key === column.key
-                ? (gaiaStarsSort.direction === "asc" ? " ^" : " v")
+                ? (gaiaStarsSort.direction === "asc" ? " ↑" : " ↓")
                 : "";
             return `<th><button type="button" data-gaia-star-sort="${escapeHtml(column.key)}">${escapeHtml(column.label)}${indicator}</button></th>`;
         }).join("");
@@ -1466,9 +1475,10 @@
         const traces = [mainTrace];
 
         const highlightIndex = findLightcurvePointIndexForFrame(clampFrameIndex(currentFrameIndex));
+        const highlightX = highlightIndex >= 0 && highlightIndex < time.length ? time[highlightIndex] : null;
         if (highlightIndex >= 0 && highlightIndex < time.length && highlightIndex < corrected.length) {
             traces.push({
-                x: [time[highlightIndex]],
+                x: [highlightX],
                 y: [corrected[highlightIndex]],
                 mode: "markers",
                 name: "Frame corrente",
@@ -1494,6 +1504,22 @@
             },
             uirevision: "lightcurve-view",
         };
+        if (highlightX !== null && highlightX !== undefined) {
+            layout.shapes = [{
+                type: "line",
+                xref: "x",
+                yref: "paper",
+                x0: highlightX,
+                x1: highlightX,
+                y0: 0,
+                y1: 1,
+                line: {
+                    color: "#ef4444",
+                    width: 2,
+                    dash: "solid",
+                },
+            }];
+        }
         if (seriesConfig.reverseYAxis) {
             const finiteValues = corrected
                 .map((value) => Number(value))

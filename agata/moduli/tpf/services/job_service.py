@@ -8,7 +8,7 @@ from pathlib import Path
 
 from ..config import settings
 from .tpf_service import build_tpf_metadata_payload
-from .utils import validate_gaia_source_id, validate_sector
+from .utils import json_safe_value, validate_gaia_source_id, validate_sector
 
 
 class JobNotFoundError(ValueError):
@@ -31,7 +31,7 @@ def _job_path(job_id: str) -> Path:
 
 def _write_json(path: Path, payload: dict) -> None:
     temp_path = path.with_suffix(".tmp")
-    temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    temp_path.write_text(json.dumps(json_safe_value(payload), ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
     temp_path.replace(path)
 
 
@@ -124,13 +124,13 @@ def start_metadata_job(gaia_source_id: str, sector) -> dict:
 
 def get_job_status(job_id: str) -> dict:
     state = _read_job_state(job_id)
-    return {
+    return json_safe_value({
         "status": "ok",
         "job_id": job_id,
         "job_status": state.get("status"),
         "progress": state.get("progress") or {},
         "error": state.get("error"),
-    }
+    })
 
 
 def get_job_result(job_id: str) -> dict:
@@ -139,12 +139,12 @@ def get_job_result(job_id: str) -> dict:
     if job_status == "failed":
         raise ValueError(state.get("error") or "Job fallito")
     if job_status != "completed":
-        return {
+        return json_safe_value({
             "status": "pending",
             "job_id": job_id,
             "job_status": job_status,
             "progress": state.get("progress") or {},
-        }
+        })
     result = dict(state.get("result") or {})
     result["job_id"] = job_id
-    return result
+    return json_safe_value(result)

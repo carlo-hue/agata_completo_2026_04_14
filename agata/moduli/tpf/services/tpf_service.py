@@ -327,7 +327,7 @@ def _crossmatch_overlay_vsx(sources: list[dict], ra_center: float, dec_center: f
             dec=[float(item["dec_deg"]) for item in sources] * u.deg,
             frame="icrs",
         )
-        vizier = Vizier(columns=["OID", "Type", "Name", "RAJ2000", "DEJ2000"])
+        vizier = Vizier(columns=["OID", "Type", "Name", "RAJ2000", "DEJ2000", "Period"])
         vizier.ROW_LIMIT = -1
         catalogs = vizier.query_region(center, radius=Angle(radius_deg, unit=u.deg), catalog=["B/vsx/vsx"])
         if catalogs is None or len(catalogs) == 0:
@@ -515,6 +515,9 @@ def _fetch_gaia_overlay_sources(target_info: dict, shape: tuple[int, int] | list
                 rejected_count += 1
                 LOGGER.debug("Vizier Gaia source %s: world-to-pixel conversion failed", source_id)
                 continue
+            dist_target_px = None
+            if target_x is not None and target_y is not None:
+                dist_target_px = math.hypot(float(x) - float(target_x), float(y) - float(target_y))
             gmag = _safe_float(row['Gmag']) if 'Gmag' in table.colnames else None
             # Controlla variabilità Gaia (photvariableflag)
             is_variable_gaia = row.get('Var') == 'VARIABLE' if 'Var' in row.colnames else False
@@ -562,6 +565,7 @@ def _fetch_gaia_overlay_sources(target_info: dict, shape: tuple[int, int] | list
                     row_ra,
                     row_dec,
                     dist_arcsec=dist_arcsec,
+                    dist_target_px=dist_target_px,
                     is_variable=is_variable_gaia,
                     variable_type=variable_type,
                     variable_catalogs=variable_catalogs,
